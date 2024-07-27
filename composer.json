@@ -1,0 +1,34 @@
+{
+  "name": "flow4ui/flow-symfony",
+  "type": "symfony-bundle",
+  "license": "MIT",
+  "description": "A Symfony bundle for defining Vue components with PHP classes and managing state on both client and server",
+  "require": {
+    "php": ">=8.1",
+    "symfony/framework-bundle": "^6.0",
+    "symfony/yaml": "^6.0"
+  },
+  "require-dev": {
+    "symfony/phpunit-bridge": "^6.0"
+  },
+  "config": {
+    "sort-packages": true
+  },
+  "autoload": {
+    "psr-4": {
+      "Flow\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "App\\Tests\\": "tests/"
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "extra": {
+    "branch-alias": {
+      "dev-main": "0.0.x-dev"
+    }
+  }
+}

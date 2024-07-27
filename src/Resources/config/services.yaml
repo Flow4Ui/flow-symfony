@@ -1,0 +1,11 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    public: false
+
+  Flow\Service\:
+    resource: '../../Service/*'
+  flow.registry:
+    alias: Flow\Service\Registry
+    public: true
