@@ -5,11 +5,18 @@
   "description": "A Symfony bundle for defining Vue components with PHP classes and managing state on both client and server",
   "require": {
     "php": ">=8.1",
-    "symfony/framework-bundle": "^6.0",
-    "symfony/yaml": "^6.0"
+    "symfony/framework-bundle": "^5.0|^6.0|^7.0",
+    "symfony/http-foundation": "^5.0|^6.0|^7.0",
+    "symfony/yaml": "^5.0|^6.0|^7.0",
+    "symfony/security-core": "^5.0|^6.0|^7.0",
+    "symfony/security-csrf": "^5.0|^6.0|^7.0",
+    "symfony/serializer": "^5.0|^6.0|^7.0",
+    "symfony/form": "^5.0|^6.0|^7.0",
+    "symfony/asset": "^5.0|^6.0|^7.0",
+    "twig/twig": "^3.0"
   },
   "require-dev": {
-    "symfony/phpunit-bridge": "^6.0"
+    "symfony/phpunit-bridge": "^5.0|^6.0|^7.0"
   },
   "config": {
     "sort-packages": true

@@ -2,13 +2,14 @@
 
 namespace Flow\Service;
 
-use Twig\Extension\AbstractExtension;
-use Twig\TwigFunction;
+use Symfony\Component\Asset\Packages;
+use Twig\{Extension\AbstractExtension, TwigFunction};
 
 class FlowTwigExtension extends AbstractExtension
 {
     public function __construct(
-        protected Manager $manager
+        protected Manager  $manager,
+        protected Packages $packages,
     )
     {
     }
@@ -20,6 +21,15 @@ class FlowTwigExtension extends AbstractExtension
                 'flow_options',
                 function ($options = []) {
                     return $this->manager->compileJsFlowOptions($options);
+                },
+                [
+                    'is_safe' => ['html'],
+                ]
+            ),
+            new TwigFunction(
+                'flow_loader',
+                function ($options = []) {
+                    return sprintf('<script>window.FlowOptions=%s;</script>', $this->manager->compileJsFlowOptions($options));
                 },
                 [
                     'is_safe' => ['html'],

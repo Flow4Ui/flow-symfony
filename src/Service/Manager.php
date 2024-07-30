@@ -1,23 +1,25 @@
 <?php
 
 namespace Flow\Service;
-
-use App\Utils\MethodBasedNormalizer;
-use Flow\Attributes\Component;
-use Flow\Attributes\Property;
-use Flow\Attributes\State;
-use Flow\Attributes\Store;
-use Flow\Attributes\StoreRef;
+use Flow\Attributes\{
+    Component,
+    Property,
+    State,
+    Store,
+    StoreRef
+};
 use Flow\Component\Context;
-use Flow\Contract\ComponentInterface;
-use Flow\Contract\HasCallbacks;
-use Flow\Contract\HasClientSideMethods;
-use Flow\Contract\HasInitState;
-use Flow\Contract\HasPostAction;
-use Flow\Contract\HasPreAction;
-use Flow\Contract\HasPreUpdateState;
-use Flow\Contract\HasUpdateState;
-use Flow\Contract\MethodType;
+use Flow\Contract\{
+    ComponentInterface,
+    HasCallbacks,
+    HasClientSideMethods,
+    HasInitState,
+    HasPostAction,
+    HasPreAction,
+    HasPreUpdateState,
+    HasUpdateState,
+    MethodType
+};
 use Flow\Enum\Direction;
 use Flow\Exception\FlowException;
 use Psr\Cache\CacheItemPoolInterface;
@@ -25,20 +27,26 @@ use Psr\Container\ContainerInterface;
 use Symfony\Component\DependencyInjection\Attribute\TaggedIterator;
 use Symfony\Component\DependencyInjection\ParameterBag\ContainerBagInterface;
 use Symfony\Component\Form\FormFactoryInterface;
-use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\RequestStack;
-use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\{
+    JsonResponse,
+    Request,
+    RequestStack,
+    Response
+};
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\Routing\RouterInterface;
-use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
-use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
+use Symfony\Component\Security\Core\{
+    Authentication\Token\Storage\TokenStorageInterface,
+    Authorization\AuthorizationCheckerInterface
+};
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 use Symfony\Component\Serializer\Context\Normalizer\ObjectNormalizerContextBuilder;
 use Symfony\Component\Serializer\Exception\ExceptionInterface;
-use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
-use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use Symfony\Component\Serializer\Normalizer\{
+    AbstractObjectNormalizer,
+    DenormalizerInterface,
+    NormalizerInterface
+};
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Contracts\Service\Attribute\Required;
 use Symfony\Contracts\Service\ServiceSubscriberInterface;
@@ -272,8 +280,6 @@ class Manager implements ServiceSubscriberInterface
             $stateUpdate['state'] = $this->normalizer->normalize($stateState, null, (new ObjectNormalizerContextBuilder())
                 ->withCircularReferenceLimit(1)
                 ->withCircularReferenceHandler(fn($object, $format, $context) => sprintf('%s:%s', get_class($object), $object->getId()))
-                //->withGroups(['default', 'flow'])
-                ->withContext(array_merge([MethodBasedNormalizer::NORMALIZATION_MODE => ['default', 'flow']], $stateDefination->normalizeAttributes))
                 ->toArray());
         }
 
@@ -282,8 +288,6 @@ class Manager implements ServiceSubscriberInterface
             $stateUpdate['callbacks'] = $this->normalizer->normalize($object->getCallbacks(), null, (new ObjectNormalizerContextBuilder())
                 ->withCircularReferenceLimit(1)
                 ->withCircularReferenceHandler(fn($object, $format, $context) => sprintf('%s:%s', get_class($object), $object->getId()))
-                //->withGroups(['default', 'flow'])
-                ->withContext(array_merge([MethodBasedNormalizer::NORMALIZATION_MODE => ['default', 'flow']], $stateDefination->normalizeAttributes))
                 ->toArray());
         }
 
