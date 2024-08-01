@@ -6,7 +6,7 @@ use Flow\{Attributes\Component,
     Attributes\State,
     Attributes\Store,
     Compiler\AttributeCompilerPass,
-    DependencyInjection\FlowExtension,
+    DependencyInjection\FlowExtension
 };
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpKernel\Bundle\Bundle;
