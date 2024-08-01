@@ -8,11 +8,11 @@ if (!Encore.isRuntimeEnvironmentConfigured()) {
 
 Encore
     // directory where compiled assets will be stored
-    .setOutputPath('src/Resources/public/')
+    .setOutputPath('./src/Resources/public/')
     // public path used by the web server to access the output path
-    .setPublicPath('/bundles/flow/')
+    .setPublicPath('/bundles/flow-symfony/')
     // only needed for CDN's or subdirectory deploy
-    .setManifestKeyPrefix('bundles/flow/')
+    .setManifestKeyPrefix('bundles/flow-symfony/')
 
     /*
      * ENTRY CONFIG
