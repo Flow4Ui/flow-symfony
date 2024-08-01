@@ -8,6 +8,8 @@ use Flow\{Attributes\Component,
     Compiler\AttributeCompilerPass,
     DependencyInjection\FlowExtension,
 };
+use Symfony\Component\Filesystem\Filesystem;
+use Symfony\Component\HttpKernel\Bundle\Bundle;
 use ReflectionClass;
 use Symfony\Component\Config\Definition\Configurator\DefinitionConfigurator;
 use Symfony\Component\DependencyInjection\{ChildDefinition, ContainerBuilder, Extension\ExtensionInterface};
@@ -29,6 +31,17 @@ class FlowBundle extends AbstractBundle
             ->end() // router
             ->scalarNode('language')->defaultValue('')->end()
             ->end();
+    }
+
+    public function boot(): void
+    {
+        $filesystem = new Filesystem();
+        $sourceDir = __DIR__ . '/Resources/public';
+        $targetDir = $this->container->getParameter('kernel.project_dir') . '/public/bundles/flow';
+
+        if ($filesystem->exists($sourceDir)) {
+            $filesystem->mirror($sourceDir, $targetDir);
+        }
     }
 
     public function build(ContainerBuilder $container): void
