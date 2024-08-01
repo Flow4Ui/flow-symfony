@@ -14,7 +14,9 @@ use Symfony\Component\DependencyInjection\ChildDefinition;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Flow\DependencyInjection\FlowExtension;
 use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
+use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 
 class FlowBundle extends AbstractBundle
 {
@@ -79,5 +81,9 @@ class FlowBundle extends AbstractBundle
         );
 
         $container->addCompilerPass(new AttributeCompilerPass());
+    }
+    protected function createContainerExtension(): ?ExtensionInterface
+    {
+        return new FlowExtension();
     }
 }
