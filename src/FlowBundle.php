@@ -2,21 +2,16 @@
 
 namespace Flow;
 
-use Flow\Attributes\Component;
-use Flow\Attributes\State;
-use Flow\Attributes\Store;
-use Flow\Compiler\AttributeCompilerPass;
-use Flow\Service\Registry;
+use Flow\{Attributes\Component,
+    Attributes\State,
+    Attributes\Store,
+    Compiler\AttributeCompilerPass,
+    DependencyInjection\FlowExtension,
+};
 use ReflectionClass;
 use Symfony\Component\Config\Definition\Configurator\DefinitionConfigurator;
-use Symfony\Component\Config\FileLocator;
-use Symfony\Component\DependencyInjection\ChildDefinition;
-use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\DependencyInjection\Loader;
-use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
-use Flow\DependencyInjection\FlowExtension;
+use Symfony\Component\DependencyInjection\{ChildDefinition, ContainerBuilder, Extension\ExtensionInterface};
 use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
-use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 
 class FlowBundle extends AbstractBundle
 {
@@ -34,17 +29,6 @@ class FlowBundle extends AbstractBundle
             ->end() // router
             ->scalarNode('language')->defaultValue('')->end()
             ->end();
-    }
-
-    public function loadExtension(array $config, ContainerConfigurator $container, ContainerBuilder $builder): void
-    {
-        $loader = new Loader\YamlFileLoader($builder, new FileLocator(__DIR__ . '/Resources/config'));
-        $loader->load('services.yaml');
-
-        $container->services()->get(Registry::class)
-            ->arg(0, $config['router']['enabled'] ?? false)
-            ->arg(1, $config['router']['mode'] ?? 'hash')
-            ->arg(2, $config['router']['base'] ?? null);
     }
 
     public function build(ContainerBuilder $container): void
