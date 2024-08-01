@@ -1,8 +1,10 @@
 <?php
 
 use Flow\Asset\AssetPackage;
+use Flow\Service\Manager;
 use Flow\Service\Registry;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
 return function (ContainerConfigurator $configurator) {
     $services = $configurator->services()
@@ -13,16 +15,19 @@ return function (ContainerConfigurator $configurator) {
 
     $services->set(Registry::class)
         ->args([
-            param('router.enabled'),
-            param('router.mode'),
-            param('router.base'),
+            ('router.enabled'),
+            ('router.mode'),
+            ('router.base'),
         ])
         ->public()
         ->alias('flow.registry', Registry::class)
         ->public();
 
+    $services->set(Manager::class)
+        ->public();
+
     $services->set(AssetPackage::class)
         ->public()
-        ->args(['@request_stack'])
+        ->args([service('request_stack')])
         ->tag('assets.package', ['package' => 'flow.assets.package']);
 };
