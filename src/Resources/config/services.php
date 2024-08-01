@@ -13,9 +13,9 @@ return function (ContainerConfigurator $configurator) {
 
     $services->set(Registry::class)
         ->args([
-            $config['router']['enabled'] ?? false,
-            $config['router']['mode'] ?? 'hash',
-            $config['router']['base'] ?? null,
+            param('router.enabled'),
+            param('router.mode'),
+            param('router.base'),
         ])
         ->public()
         ->alias('flow.registry', Registry::class)
