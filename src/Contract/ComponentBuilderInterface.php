@@ -5,7 +5,7 @@ namespace Flow\Contract;
 use Flow\Component\Context;
 use Flow\Component\Element;
 
-interface ComponentInterface
+interface ComponentBuilderInterface
 {
     public function build(Context $context): Element;
 }

@@ -29,7 +29,7 @@ class ForElement extends Element
 
         $context = $context->addScope($matches[0]);
         return sprintf(
-            '(v.renderList(%s,%s => %s))',
+            '(v.openBlock(true), v.createElementBlock(v.Fragment, null, v.renderList(%s,%s => (%s))))',
             $this->in->render($context),
             $this->for->render($context),
             $this->do->render(($this->key ? $context : $context->withNextKey($this->key))->withForceNewBlock()),

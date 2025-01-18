@@ -2,7 +2,7 @@
 
 namespace Flow\Component;
 
-use Flow\Contract\ComponentInterface;
+use Flow\Contract\ComponentBuilderInterface;
 
 class Element
 {
@@ -11,11 +11,11 @@ class Element
     public array $dynamicProperties = [];
 
     public function __construct(
-        readonly public string|ComponentInterface $tag,
-        public array                              $props = [],
-        public array|Element|string               $children = [],
-        public array                              $directives = [],
-        public bool                               $isRoot = false,
+        readonly public string|ComponentBuilderInterface $tag,
+        public array                                     $props = [],
+        public array|Element|string                      $children = [],
+        public array                                     $directives = [],
+        public bool                                      $isRoot = false,
     )
     {
     }
@@ -81,8 +81,10 @@ class Element
 
         $processedProps = $this->props;
 
+        $class = [];
+
         // preprocess v-model
-//        foreach ($processedProps as $prop => $value) {
+        foreach ($processedProps as $prop => $value) {
 //            if ($prop === 'v-model') {
 //                $prop = 'update:modelValue';
 //                $model = 'modelValue';
@@ -100,8 +102,14 @@ class Element
 //                $processedProps[$newProp] ??= new OnElement($prop);
 //                $processedProps[$newProp]->addHandler(new Expression(sprintf('%s=$event', $value)));
 //            }
-//        }
-//
+
+            if ($prop === 'class' || $prop === ':class') {
+                $class[] = $value;
+                unset($processedProps[$prop]);
+            }
+        }
+
+
         foreach ($processedProps as $prop => $value) {
             if ($prop === 'v-bind') {
                 $bindings[] = $this->renderValue($value, $context);
@@ -115,6 +123,25 @@ class Element
             if (!empty($renderedProp)) {
                 [$prop, $value] = $renderedProp;
                 $props .= sprintf('%s:%s,', $prop, $value);
+            }
+        }
+        if (!empty($class)) {
+            $classValue = null;
+            if (count($class) && is_string($class[0])) {
+                $classValue = $this->renderValue($class[0], $context);
+            } else if (count($class) === 1) {
+                $classValue = sprintf('v.normalizeClass(%s)', $this->renderValue($class[0], $context));
+            } else if (count($class) > 1) {
+                $classValue = sprintf(
+                    'v.normalizeClass([%s])',
+                    implode(
+                        ',',
+                        array_map(fn($classItem) => $this->renderValue($classItem, $context), $class),
+                    ),
+                );
+            }
+            if ($classValue !== null) {
+                $props .= sprintf('class:%s,', $classValue);
             }
         }
         $props .= '}';

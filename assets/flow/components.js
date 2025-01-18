@@ -6,6 +6,7 @@ import {
     createTextVNode,
     createVNode,
     defineComponent,
+    Fragment,
     h,
     inject,
     isReactive,
@@ -66,6 +67,7 @@ const _Vue = {
     normalizeClass,
     normalizeProps,
     normalizeStyle,
+    Fragment,
 }
 
 // Check the console for the AST

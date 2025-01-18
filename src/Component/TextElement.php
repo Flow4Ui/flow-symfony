@@ -12,6 +12,6 @@ class TextElement extends Element
 
     public function render(?Context $context = null): string
     {
-        return sprintf('v.createTextVNode(%s)', json_encode($this->text));
+        return sprintf('v.toDisplayString(%s)', json_encode($this->text));
     }
 }

@@ -1,16 +1,10 @@
 <?php
 
 namespace Flow\Service;
-use Flow\Attributes\{
-    Component,
-    Property,
-    State,
-    Store,
-    StoreRef
-};
+
+use Flow\Attributes\{Component, Property, State, Store, StoreRef};
 use Flow\Component\Context;
-use Flow\Contract\{
-    ComponentInterface,
+use Flow\Contract\{ComponentBuilderInterface,
     HasCallbacks,
     HasClientSideMethods,
     HasInitState,
@@ -22,31 +16,22 @@ use Flow\Contract\{
 };
 use Flow\Enum\Direction;
 use Flow\Exception\FlowException;
+use Flow\Template\Compiler;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Container\ContainerInterface;
 use Symfony\Component\DependencyInjection\Attribute\TaggedIterator;
 use Symfony\Component\DependencyInjection\ParameterBag\ContainerBagInterface;
 use Symfony\Component\Form\FormFactoryInterface;
-use Symfony\Component\HttpFoundation\{
-    JsonResponse,
-    Request,
-    RequestStack,
-    Response
-};
+use Symfony\Component\HttpFoundation\{JsonResponse, Request, RequestStack, Response};
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\Routing\RouterInterface;
-use Symfony\Component\Security\Core\{
-    Authentication\Token\Storage\TokenStorageInterface,
+use Symfony\Component\Security\Core\{Authentication\Token\Storage\TokenStorageInterface,
     Authorization\AuthorizationCheckerInterface
 };
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 use Symfony\Component\Serializer\Context\Normalizer\ObjectNormalizerContextBuilder;
 use Symfony\Component\Serializer\Exception\ExceptionInterface;
-use Symfony\Component\Serializer\Normalizer\{
-    AbstractObjectNormalizer,
-    DenormalizerInterface,
-    NormalizerInterface
-};
+use Symfony\Component\Serializer\Normalizer\{AbstractObjectNormalizer, DenormalizerInterface, NormalizerInterface};
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Contracts\Service\Attribute\Required;
 use Symfony\Contracts\Service\ServiceSubscriberInterface;
@@ -71,6 +56,13 @@ class Manager implements ServiceSubscriberInterface
 
     protected CacheItemPoolInterface $adapter;
 
+    /**
+     * Whether or not to enable template caching
+     */
+    protected bool $cacheEnabled;
+    protected string $cacheDirectory;
+
+
     public function __construct(
         #[TaggedIterator('flow.state')] iterable     $stores,
         #[TaggedIterator('flow.component')] iterable $components,
@@ -78,7 +70,9 @@ class Manager implements ServiceSubscriberInterface
         DenormalizerInterface                        $denormalizer,
         Registry                                     $registry,
         Environment                                  $environment,
-        CacheItemPoolInterface                       $adapter,
+
+        bool   $cacheEnabled,
+        string $cacheDir
         //Transport                                $transport,
     )
     {
@@ -94,7 +88,14 @@ class Manager implements ServiceSubscriberInterface
             $this->componentInstances[get_class($component)] = $component;
         }
         $this->environment = $environment;
-        $this->adapter = $adapter;
+
+        // Suppose your flow config is read into 'flow.cache.enabled'
+        // Reading from config:
+        $this->cacheEnabled = $cacheEnabled;
+        $this->cacheDirectory = $cacheDir;
+        if ($this->cacheEnabled && !is_dir($this->cacheDirectory)) {
+            @mkdir($this->cacheDirectory, 0777, true);
+        }
     }
 
     public static function getSubscribedServices(): array
@@ -390,25 +391,103 @@ class Manager implements ServiceSubscriberInterface
      * @throws ExceptionInterface
      * @throws \ReflectionException
      */
-    protected function appendComponentDefinition(?Component $componentDefinition, ComponentInterface $component): array
+    protected function appendComponentDefinition(?Component $componentDefinition, object $component): array
     {
         $stateDefinition = $this->registry->getStateDefinition($componentDefinition->stateId);
-        $context = new Context($this->registry, $componentDefinition);
+        $flowContext = new Context($this->registry, $componentDefinition);
+        // If the component implements a custom interface, skip
+        if ($component instanceof ComponentBuilderInterface) {
+            $element = $component->build($flowContext);
+            $rendered = $element->render($flowContext);
+        } else {
+            $rendered = $this->compileAndRenderFlowTemplate($componentDefinition, $flowContext, get_class($component));
+        }
+
         $componentClientDefinition = [
             'name' => $componentDefinition->name,
             'stateId' => $stateDefinition->name,
             'props' => $componentDefinition->props,
             'state' => $this->makeOutputState($stateDefinition, $this->stateInstances[$stateDefinition->className])['state'],
-            'render' => $component->build($context)->render($context),
+            'render' => $rendered,
         ];
 
         if ($component instanceof HasClientSideMethods) {
             $componentClientDefinition['methods'] = $component
                 ->getClientSideMethods()
-                ->getMethods($context);
+                ->getMethods($flowContext);
         }
+//
+//        foreach ($stateDefinition->actions as $action) {
+//            $componentClientDefinition['methods'] ??= [];
+//            $componentClientDefinition['methods'][$action->name] = [
+//                'params' => [],
+//                'func' => sprintf('this.invoke.call(\'%s\',arguments);', $action->name)
+//            ];
+//        }
 
         return $componentClientDefinition;
+    }
+
+    private function compileAndRenderFlowTemplate(Component $definition, Context $flowContext, string $className): string
+    {
+        // 1) Retrieve template content
+        $template = $definition->template
+            ?? ($definition->templatePath ? @file_get_contents($definition->templatePath) : null);
+
+        if (!$template) {
+            // No template -> no output
+            return '';
+        }
+
+        // 2) If caching disabled, compile fresh each time:
+        if (!$this->cacheEnabled) {
+            $element = (new Compiler())->compile($template, $flowContext);
+            return $element->render($flowContext);
+        }
+
+        // 3) Build a stable filename in the Flow cache directory
+        $hash = md5($template);
+        $nameHash = md5($className);
+        $fileName = sprintf('%s_%s.php', $definition->name, $nameHash);
+        // e.g. MyComponent_2f18cd4ee.php
+
+        $filePath = rtrim($this->cacheDirectory, '/\\') . DIRECTORY_SEPARATOR . $fileName;
+
+        // 4) Check if the file is already present
+        if (is_file($filePath)) {
+            // The file returns an Element or something similar
+            [$rendered, $oldHash] = require $filePath;
+
+            if ($oldHash === $hash) {
+                return $rendered;
+            }
+            // If it's not valid or something changed, fallback to recompile
+        }
+
+        // 5) We do not have a valid cached version -> compile from scratch
+        $element = (new Compiler())->compile($template, $flowContext);
+        $rendered = $element->render($flowContext);
+
+        // 6) Cache it to a .php file
+        // We'll store the serialized Element. Alternatively, build real PHP code.
+        $serialized = serialize([$rendered, $hash]);
+        $serializedExport = var_export($serialized, true);
+
+        $phpCode = <<<PHP
+<?php
+
+/**
+ * Auto-generated by Flow Manager
+ * Name: {$definition->name}
+ * Hash: $hash
+ */
+return unserialize($serializedExport);
+
+PHP;
+
+        @file_put_contents($filePath, $phpCode);
+
+        return $rendered;
     }
 
     /**
@@ -436,12 +515,11 @@ class Manager implements ServiceSubscriberInterface
                     'awake' => is_a($storeDefinition->className, HasUpdateState::class, true) || is_a($storeDefinition->className, HasPreUpdateState::class, true),
                     'state' => $this->makeOutputState($storeDefinition, $stateInstance, true)['state'],
                 ];
-
-                if ($stateInstance instanceof HasClientSideMethods) {
-                    $storeMetadata['methods'] = $stateInstance
-                        ->getClientSideMethods()
-                        ->getMethods($context, fn($method) => $method['methodType'] === MethodType::Method);
+                $storeMetadata['methods'] = $this->getActionsMethod($storeDefinition, $stateInstance, $context);
+                if (empty($storeMetadata['methods'])) {
+                    unset($storeMetadata['methods']);
                 }
+
                 $storesDefinitions[$storeDefinition->name] = $storeMetadata;
             }
         }
@@ -481,10 +559,9 @@ class Manager implements ServiceSubscriberInterface
                     'awake' => is_a($stateDefinition->className, HasUpdateState::class, true) || is_a($stateDefinition->className, HasPreUpdateState::class, true),
                     'state' => $this->makeOutputState($stateDefinition, $stateInstance, true)['state'],
                 ];
-                if ($stateInstance instanceof HasClientSideMethods) {
-                    $stateMetadata['methods'] = $stateInstance
-                        ->getClientSideMethods()
-                        ->getMethods($context, fn($method) => $method['methodType'] === MethodType::Method);
+                $stateMetadata['methods'] = $this->getActionsMethod($stateDefinition, $stateInstance, $context);
+                if (empty($stateMetadata['methods'])) {
+                    unset($stateMetadata['methods']);
                 }
                 $statesDefinitions[$stateDefinition->name] = $stateMetadata;
             }
@@ -530,6 +607,15 @@ class Manager implements ServiceSubscriberInterface
         }
     }
 
+    public function warmUpComponent(Component $definition, string $className): void
+    {
+        if ($this->cacheEnabled) {
+            $context = new Context($this->registry, $definition);
+            $this->compileAndRenderFlowTemplate($definition, $context, $className);
+        }
+    }
+
+
     protected function getRequest()
     {
         $this->request ??= $this->container->get('request_stack')->getCurrentRequest();
@@ -567,5 +653,25 @@ class Manager implements ServiceSubscriberInterface
         }
 
         return new JsonResponse($data, $status, $headers);
+    }
+
+    protected function getActionsMethod(State|Store $storeDefinition, mixed $stateInstance, Context $context)
+    {
+        $methods = [];
+
+        if ($stateInstance instanceof HasClientSideMethods) {
+            $methods = $stateInstance
+                ->getClientSideMethods()
+                ->getMethods($context, fn($method) => $method['methodType'] === MethodType::Method);
+        }
+
+        foreach ($storeDefinition->actions as $action) {
+            $method = $action->name;
+            $methods[$method] = [
+                'params' => [],
+                'func' => sprintf('this.invoke.call(this,"%s",Array.prototype.slice.call(arguments));', $method),
+            ];
+        }
+        return $methods;
     }
 }

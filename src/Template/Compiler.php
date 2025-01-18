@@ -2,18 +2,19 @@
 
 namespace Flow\Template;
 
-use Flow\Component\ClassNormalizerExpression;
-use Flow\Component\ComponentElement;
-use Flow\Component\Context;
-use Flow\Component\Element;
-use Flow\Component\Expression;
-use Flow\Component\ForElement;
-use Flow\Component\FragmentElement;
-use Flow\Component\IfElement;
-use Flow\Component\OnElement;
-use Flow\Component\SlotElement;
-use Flow\Component\TemplateElement;
-use Flow\Component\TextElement;
+use Flow\Component\{ClassNormalizerExpression,
+    ComponentElement,
+    Context,
+    Element,
+    Expression,
+    ForElement,
+    FragmentElement,
+    IfElement,
+    OnElement,
+    SlotElement,
+    TemplateElement,
+    TextElement
+};
 use Flow\Exception\FlowException;
 
 class Compiler
@@ -27,8 +28,19 @@ class Compiler
         'html', 'head', 'title', 'meta', 'body', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
         'strong', 'b', 'em', 'i', 'a', 'link', 'ul', 'li', 'ol', 'img', 'table', 'tr', 'td', 'th',
         'form', 'input', 'button', 'select', 'textarea', 'div', 'span', 'header', 'footer',
-        'section', 'article', 'nav', 'aside', 'audio', 'video', 'hr', 'br'
+        'section', 'article', 'nav', 'aside', 'audio', 'video', 'hr', 'br', 'svg',
+        // SVG tags
+        'circle', 'clipPath', 'defs', 'desc', 'ellipse', 'feBlend', 'feColorMatrix',
+        'feComponentTransfer', 'feComposite', 'feConvolveMatrix', 'feDiffuseLighting',
+        'feDisplacementMap', 'feDistantLight', 'feDropShadow', 'feFlood', 'feFuncA',
+        'feFuncB', 'feFuncG', 'feFuncR', 'feGaussianBlur', 'feImage', 'feMerge',
+        'feMergeNode', 'feMorphology', 'feOffset', 'fePointLight', 'feSpecularLighting',
+        'feSpotLight', 'feTile', 'feTurbulence', 'filter', 'foreignObject', 'g',
+        'image', 'line', 'linearGradient', 'marker', 'mask', 'metadata', 'path',
+        'pattern', 'polygon', 'polyline', 'radialGradient', 'rect', 'stop',
+        'switch', 'symbol', 'text', 'textPath', 'tspan', 'use', 'view'
     ];
+
     const V_MODEL = 'v-model';
 
     protected Preprocessor|null $preprocessor = null;
@@ -93,8 +105,17 @@ class Compiler
             $prop = $this->getNameFromId($prop);
 
             if ($isTemplate && str_starts_with($prop, self::V_SLOT)) {
-                $element->name = substr($prop, strlen(self::V_SLOT));
+                $templateName = substr($prop, strlen(self::V_SLOT));
+                $this->assignProp($element, 'name', $templateName);
+                $element->name = $templateName;
                 $element->propsName = $value->value;
+                continue;
+            }
+
+            if ($prop === 'name' && $isTemplate) {
+                $this->assignProp($element, 'name', $value->value);
+                $element->name = $value->value;
+                continue;
             }
 
             if ($prop[0] === ':') {
@@ -234,6 +255,17 @@ class Compiler
                     $forExpression->pathFlags |= PathFlags::UNKEYED_FRAGMENT;
                 }
             }
+        }
+
+
+        if ($element instanceof TemplateElement && empty($element->name)) {
+            $newElement = new FragmentElement('fragment');
+            $newElement->pathFlags = $element->pathFlags;
+            $newElement->directives = $element->directives;
+            $newElement->props = $element->props;
+            $newElement->children = $element->children;
+            $newElement->dynamicProperties = $element->dynamicProperties;
+            $element = $newElement;
         }
 
         $lastChildElement = null;

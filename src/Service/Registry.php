@@ -1,15 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Flow\Service;
 
-use Flow\Attributes\Action;
-use Flow\Attributes\Attribute;
-use Flow\Attributes\Component;
-use Flow\Attributes\Property;
-use Flow\Attributes\Router;
-use Flow\Attributes\State;
-use Flow\Attributes\Store;
-use Flow\Attributes\StoreRef;
+use Flow\Attributes\{Action, Attribute, Component, Property, Router, State, Store, StoreRef};
 use ReflectionException;
 use function Symfony\Component\String\s;
 
@@ -53,7 +48,7 @@ class Registry
 
     /**
      */
-    public function defineState(\ReflectionClass $class, State|null $store = null, $isStore = false, Component $component = null): void
+    public function defineState(\ReflectionClass $class, ?State $store = null, $isStore = false, ?Component $component = null): void
     {
         if ($store === null) {
             $attributes = $class->getAttributes(State::class, \ReflectionAttribute::IS_INSTANCEOF);
@@ -96,9 +91,9 @@ class Registry
         return $this->genCammelCaseNameId($class->getShortName());
     }
 
-    protected function genCammelCaseNameId(string $name)
+    protected function genCammelCaseNameId(string $name): string
     {
-        return s($name)->camel()->title();
+        return s($name)->camel()->title()->toString();
     }
 
     /**
@@ -106,7 +101,7 @@ class Registry
      * @param mixed $store
      * @return void
      */
-    private function computeProperty(\ReflectionProperty $property, State $store, Component $component = null): void
+    private function computeProperty(\ReflectionProperty $property, State $store, ?Component $component = null): void
     {
         $attribute = $property->getAttributes(Property::class, \ReflectionAttribute::IS_INSTANCEOF)[0] ?? null;
         $storeProperty = $attribute?->newInstance();
@@ -222,7 +217,7 @@ class Registry
      * @param Component|null $componentAttribute
      * @return void
      */
-    public function defineComponent(\ReflectionClass $class, Component $componentAttribute = null)
+    public function defineComponent(\ReflectionClass $class, ?Component $componentAttribute = null)
     {
         if ($componentAttribute === null) {
             $attributes = $class->getAttributes(Component::class, \ReflectionAttribute::IS_INSTANCEOF);

@@ -2,13 +2,11 @@
 
 namespace Flow\Component;
 
-use Flow\Contract\ComponentInterface;
 use Flow\Contract\HasCallbacks;
 use Flow\Contract\HasClientSideMethods;
 use Flow\Contract\Methods;
-use Flow\Template\Compiler;
 
-abstract class AbstractComponent implements ComponentInterface, HasClientSideMethods, HasCallbacks
+abstract class AbstractComponent implements HasClientSideMethods, HasCallbacks
 {
 
     private $callbacks = [];
@@ -28,19 +26,6 @@ abstract class AbstractComponent implements ComponentInterface, HasClientSideMet
     public function getCallbacks(): array
     {
         return $this->callbacks;
-    }
-
-    public function build(Context $context): Element
-    {
-        $component = $context->getComponent($this::class);
-
-        $template = $component->template ?? ($component->templatePath ? file_get_contents($component->templatePath) : null);
-        return $this->compile($template);
-    }
-
-    protected function compile(string $template)
-    {
-        return (new Compiler())->compile($template, new Context());
     }
 
     public function getClientSideMethods(): Methods
