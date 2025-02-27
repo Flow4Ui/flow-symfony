@@ -135,7 +135,7 @@ class Methods
     /**
      * @return array<string,array{lifecycleEvent:bool,params:array<string>,func:string|JsFunc}>
      */
-    public function getMethods(Context $context, callable $filter = null): array
+    public function getMethods(Context $context, ?callable $filter = null): array
     {
         $methods = [];
 

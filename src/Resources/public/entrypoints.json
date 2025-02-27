@@ -1,0 +1,12 @@
+{
+  "entrypoints": {
+    "flow-main": {
+      "js": [
+        "/bundles/flow-symfony/flow-main.64b57b74.js"
+      ]
+    }
+  },
+  "integrity": {
+    "/bundles/flow-symfony/flow-main.64b57b74.js": "sha384-pf9zV7CMs0ZMscS4ZNk40xvqvkopz3mG1Z66ZhG13lOq3i6j8qll9f6OLqbYW93D"
+  }
+}
