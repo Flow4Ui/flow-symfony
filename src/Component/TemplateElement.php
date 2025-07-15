@@ -26,7 +26,7 @@ class TemplateElement extends Element
     public function render(?Context $context = null): string
     {
         if ($this->name === '') {
-            //todo: handle this case
+            //todo: check, this case will be converted to fragment at compile time
             return implode(',', $this->renderChildren($context));
         }
         $propsName = $this->propsName ?? $this->props['props-name'] ?? $this->props['propsName'] ?? '';

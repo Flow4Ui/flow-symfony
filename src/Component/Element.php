@@ -81,6 +81,7 @@ class Element
 
         $processedProps = $this->props;
 
+
         $class = [];
 
         // preprocess v-model
@@ -117,7 +118,11 @@ class Element
             } elseif (str_starts_with($prop, 'v-bind:')) {
                // $bindings[] = $this->renderValue($value, $context);
                 continue;
+            } else if (str_contains($prop, 'v-')) {
+                $this->directives[substr($prop, 2)] = $value;
+                continue;
             }
+
 
             $renderedProp = $this->renderProp($prop, $value, $context);
             if (!empty($renderedProp)) {
@@ -232,10 +237,10 @@ class Element
             }
 
 
-            $directives[] = sprintf('["%s",%s,%s,%s]', $directiveName, $value->render($context), $modifier, json_encode($directiveModifiersParsed));
+            $directives[] = sprintf('[%s,%s,%s,%s]', $context->resolveDirective($directiveName), $this->renderValue($value, $context), $modifier, json_encode($directiveModifiersParsed));
         }
 
-        return sprintf('wd(%s,[%s])', $renderElement, implode(',', $directives));
+        return sprintf('v.withDirectives(%s,[%s])', $renderElement, implode(',', $directives));
     }
 
     /**

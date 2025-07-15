@@ -18,7 +18,9 @@ use Flow\Enum\Direction;
 use Flow\Exception\FlowException;
 use Flow\Template\Compiler;
 use Psr\Cache\CacheItemPoolInterface;
+use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
+use Psr\Container\NotFoundExceptionInterface;
 use Symfony\Component\DependencyInjection\Attribute\TaggedIterator;
 use Symfony\Component\DependencyInjection\ParameterBag\ContainerBagInterface;
 use Symfony\Component\Form\FormFactoryInterface;
@@ -172,6 +174,9 @@ class Manager implements ServiceSubscriberInterface
             $actionDefinition = $instanceDefinition->actions[$name] ?? null;
             if ($actionDefinition === null) {
                 throw new FlowException(sprintf('Invoking action: %s not defined in state manager: %s', $name, $instanceDefinition->name));
+            }
+            if (empty($actionDefinition->roles)) {
+
             }
             $args = !empty($action['args']) && is_array($action['args']) ? $action['args'] : [];
             foreach ($actionDefinition->reflectionAction->getParameters() as $argIndex => $parameter) {
@@ -615,7 +620,10 @@ PHP;
         }
     }
 
-
+    /**
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     */
     protected function getRequest()
     {
         $this->request ??= $this->container->get('request_stack')->getCurrentRequest();

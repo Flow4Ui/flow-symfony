@@ -14,6 +14,7 @@ class Action
         readonly public array|null      $output = null,
         readonly public array|null      $input = null,
         readonly public StateUpdateType $updateType = StateUpdateType::REPLACE,
+        readonly public array|null $roles = null,
     )
     {
     }

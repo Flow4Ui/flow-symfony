@@ -8,8 +8,10 @@ use Flow\Service\Registry;
 class Context
 {
     public Element|null $nextElementKey = null;
+    public $keyIndex = 0;
 
     public \ArrayObject $componentsElements;
+    public \ArrayObject $directives;
     /**
      * @var true
      */
@@ -55,6 +57,7 @@ class Context
     )
     {
         $this->componentsElements = new \ArrayObject();
+        $this->directives = new \ArrayObject();
     }
 
     /**
@@ -140,6 +143,19 @@ class Context
         return $instance_id;
     }
 
+
+    /**
+     */
+    public function resolveDirective($name): string
+    {
+        $instance_id = $this->directives[$name] ?? null;
+        if ($instance_id === null) {
+            $instance_id = 'w_' . $this->directives->count();
+            $this->directives->offsetSet($name, $instance_id);
+        }
+        return $instance_id;
+    }
+
     public function withForceNewBlock(): self
     {
         $this->newBlock = true;
@@ -161,6 +177,7 @@ class Context
     {
         $newContext = clone $this;
         $newContext->scopes[] = $names;
+
         return $newContext;
     }
 
@@ -179,5 +196,7 @@ class Context
     {
         return $this->registry->getComponentDefinition($class);
     }
+
+
 
 }
