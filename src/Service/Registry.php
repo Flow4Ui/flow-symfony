@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flow\Service;
 
 use Flow\Attributes\{Action, Attribute, Component, Property, Router, State, Store, StoreRef};
+use Flow\Exception\FlowException;
 use ReflectionException;
 use function Symfony\Component\String\s;
 
@@ -124,6 +125,10 @@ class Registry
         return $getName;
     }
 
+    /**
+     * @throws ReflectionException
+     * @throws FlowException
+     */
     private function computeRef(\ReflectionProperty $property, mixed $store): void
     {
         $attribute = $property->getAttributes(StoreRef::class, \ReflectionAttribute::IS_INSTANCEOF)[0] ?? null;
@@ -135,10 +140,17 @@ class Registry
             $storeProperty->reflectionProperty = $property;
             $storeProperty->name = !empty($storeProperty->name) ? $storeProperty->name : $this->genPropertyName($property->getName());
             $storeName = $storeProperty->store;
+
             if (!empty($storeName)) {
-                $storeName = $this->getStoreDefinition($storeName, class_exists($storeName))->name;
-            } elseif (empty($storeProperty->property) && $property->hasType()) {
-                $storeName = $this->getStoreDefinition($property->getType()->getName(), true)->name;
+                $storeName = $this->getStoreDefinition($storeName, class_exists($storeName))?->name;
+            }
+
+            if (empty($storeProperty->property) && $property->hasType()) {
+                $storeName = $this->getStoreDefinition($property->getType()->getName(), true)?->name;
+            }
+
+            if (empty($storeName)) {
+                throw new FlowException(sprintf('Store reference %s not found', $storeProperty->store));
             }
             $storeProperty->store = $storeName;
             $store->properties[$storeProperty->name] = $storeProperty;

@@ -12,23 +12,30 @@ use Flow\Contract\{ComponentBuilderInterface,
     HasPreAction,
     HasPreUpdateState,
     HasUpdateState,
-    MethodType
+    MethodType,
+    SecurityInterface,
+    Transport
 };
 use Flow\Enum\Direction;
+use Flow\Event\{AfterActionInvokeEvent, BeforeActionInvokeEvent, PostActionEvent, PreActionEvent};
 use Flow\Exception\FlowException;
+use Flow\Security\RoleBasedSecurity;
 use Flow\Template\Compiler;
+use Flow\Transport\AjaxJsonTransport;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
 use Psr\Container\NotFoundExceptionInterface;
 use Symfony\Component\DependencyInjection\Attribute\TaggedIterator;
 use Symfony\Component\DependencyInjection\ParameterBag\ContainerBagInterface;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Form\FormFactoryInterface;
 use Symfony\Component\HttpFoundation\{JsonResponse, Request, RequestStack, Response};
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\Routing\RouterInterface;
 use Symfony\Component\Security\Core\{Authentication\Token\Storage\TokenStorageInterface,
-    Authorization\AuthorizationCheckerInterface
+    Authorization\AuthorizationCheckerInterface,
+    Exception\AccessDeniedException
 };
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 use Symfony\Component\Serializer\Context\Normalizer\ObjectNormalizerContextBuilder;
@@ -41,8 +48,6 @@ use Twig\Environment;
 
 class Manager implements ServiceSubscriberInterface
 {
-
-
     protected Registry $registry;
     protected NormalizerInterface $normalizer;
     protected DenormalizerInterface $denormalizer;
@@ -53,8 +58,10 @@ class Manager implements ServiceSubscriberInterface
     protected array $componentInstances = [];
 
     protected Environment $environment;
-
     protected Request|null $request = null;
+    protected Transport $transport;
+    protected SecurityInterface|null $security = null;
+    protected EventDispatcherInterface|null $eventDispatcher = null;
 
     protected CacheItemPoolInterface $adapter;
 
@@ -72,16 +79,19 @@ class Manager implements ServiceSubscriberInterface
         DenormalizerInterface                        $denormalizer,
         Registry                                     $registry,
         Environment                                  $environment,
-
-        bool   $cacheEnabled,
-        string $cacheDir
-        //Transport                                $transport,
+        Transport                                    $transport,
+        EventDispatcherInterface                     $eventDispatcher = null,
+        SecurityInterface                            $security = null,
+        bool                                         $cacheEnabled = false,
+        string                                       $cacheDir = ''
     )
     {
-
         $this->registry = $registry;
         $this->normalizer = $normalizer;
         $this->denormalizer = $denormalizer;
+        $this->transport = $transport;
+        $this->eventDispatcher = $eventDispatcher;
+        $this->security = $security;
 
         foreach ($stores as $store) {
             $this->stateInstances[get_class($store)] = $store;
@@ -91,8 +101,7 @@ class Manager implements ServiceSubscriberInterface
         }
         $this->environment = $environment;
 
-        // Suppose your flow config is read into 'flow.cache.enabled'
-        // Reading from config:
+        // Configure caching
         $this->cacheEnabled = $cacheEnabled;
         $this->cacheDirectory = $cacheDir;
         if ($this->cacheEnabled && !is_dir($this->cacheDirectory)) {
@@ -108,6 +117,7 @@ class Manager implements ServiceSubscriberInterface
             'http_kernel' => '?' . HttpKernelInterface::class,
             'serializer' => '?' . SerializerInterface::class,
             'security.authorization_checker' => '?' . AuthorizationCheckerInterface::class,
+            'event_dispatcher' => '?' . EventDispatcherInterface::class,
             'twig' => '?' . Environment::class,
             'form.factory' => '?' . FormFactoryInterface::class,
             'security.token_storage' => '?' . TokenStorageInterface::class,
@@ -132,19 +142,16 @@ class Manager implements ServiceSubscriberInterface
      */
     public function handle(Request $request): Response
     {
-
         $statusCode = Response::HTTP_OK;
         $this->request = $request;
 
-        if (!$request->isMethod('POST')) {
-            throw new FlowException('Flow http transport is server only POST method');
-        }
-
-        $requestContext = json_decode($request->getContent(), true);
-        $instances = [];
-        $metadata = [];
-        $this->storeInstances = [];
-        $returnContext = [];
+        try {
+            // Process request using the configured transport
+            $requestContext = $this->transport->processRequest($request);
+            $instances = [];
+            $metadata = [];
+            $this->storeInstances = [];
+            $returnContext = [];
 
         foreach ($requestContext['stores'] as $instanceId => $store) {
             $storeDefinition = $this->registry->getStoreDefinition($store['name']);
@@ -175,9 +182,15 @@ class Manager implements ServiceSubscriberInterface
             if ($actionDefinition === null) {
                 throw new FlowException(sprintf('Invoking action: %s not defined in state manager: %s', $name, $instanceDefinition->name));
             }
-            if (empty($actionDefinition->roles)) {
-
+ 
+            // Check role-based permissions if security is configured
+            if ($this->security) {
+                $isAllowed = $this->security->isActionAllowed($name, $instanceDefinition, $instances[$instanceId], $action['args'] ?? []);
+                if (!$isAllowed) {
+                    throw new AccessDeniedException(sprintf('Access denied for action: %s on %s', $name, $instanceDefinition->name));
+                }
             }
+
             $args = !empty($action['args']) && is_array($action['args']) ? $action['args'] : [];
             foreach ($actionDefinition->reflectionAction->getParameters() as $argIndex => $parameter) {
                 if ($parameter->hasType() && !$parameter->getType()->isBuiltin()) {
@@ -185,7 +198,33 @@ class Manager implements ServiceSubscriberInterface
                     $args[$argIndex] = $this->denormalizer->denormalize($args[$argIndex], $typeName, context: [AbstractObjectNormalizer::DISABLE_TYPE_ENFORCEMENT => true]);
                 }
             }
-            $returnContext['actions'][$invokeId]['return'] = $actionDefinition->reflectionAction->invokeArgs($instances[$instanceId], $args);
+
+            // Dispatch before action invoke event
+            $canProceed = true;
+            if ($this->eventDispatcher) {
+                $beforeEvent = new BeforeActionInvokeEvent($this, $request, $name, $instanceDefinition, $instances[$instanceId], $args);
+                $this->eventDispatcher->dispatch($beforeEvent, 'flow.before_action_invoke');
+
+                // Update args from event and check if we can proceed
+                $args = $beforeEvent->getArgs();
+                $canProceed = $beforeEvent->canProceed();
+            }
+
+            $result = null;
+            if ($canProceed) {
+                $result = $actionDefinition->reflectionAction->invokeArgs($instances[$instanceId], $args);
+            }
+
+            // Dispatch after action invoke event
+            if ($this->eventDispatcher) {
+                $afterEvent = new AfterActionInvokeEvent($this, $request, $name, $instanceDefinition, $instances[$instanceId], $args, $result);
+                $this->eventDispatcher->dispatch($afterEvent, 'flow.after_action_invoke');
+
+                // Update result from event
+                $result = $afterEvent->getResult();
+            }
+
+            $returnContext['actions'][$invokeId]['return'] = $result;
         }
 
         $this->invokePostActionInstances($request, $instances);
@@ -207,7 +246,21 @@ class Manager implements ServiceSubscriberInterface
 //            $returnContext['components'] = $this->appendComponents($requestContext['components']);
 //        }
 
-        return new JsonResponse($returnContext, $statusCode);
+            // Process response using the configured transport
+            return $this->transport->processResponse($returnContext, $statusCode);
+        } catch (\Exception $e) {
+            // Return a standardized error response
+            $errorContext = [
+                'error' => [
+                    'message' => $e->getMessage(),
+                    'code' => $e->getCode(),
+                    'type' => get_class($e)
+                ]
+            ];
+
+            $statusCode = $e instanceof AccessDeniedException ? Response::HTTP_FORBIDDEN : Response::HTTP_BAD_REQUEST;
+            return $this->transport->processResponse($errorContext, $statusCode);
+        }
     }
 
     /**
@@ -581,6 +634,13 @@ PHP;
      */
     public function invokePreactionInstances(Request $request, array $instances): void
     {
+        // Dispatch pre-action event if event dispatcher is available
+        if ($this->eventDispatcher) {
+            $event = new PreActionEvent($this, $request, $instances);
+            $this->eventDispatcher->dispatch($event, 'flow.pre_action');
+        }
+
+        // Process legacy pre-action hooks
         foreach ($this->storeInstances as $instance) {
             if ($instance instanceof HasPreAction) {
                 $instance->preAction($request);
@@ -600,6 +660,7 @@ PHP;
      */
     public function invokePostActionInstances(Request $request, array $instances): void
     {
+        // Process legacy post-action hooks
         foreach ($this->storeInstances as $instance) {
             if ($instance instanceof HasPostAction) {
                 $instance->postAction($request);
@@ -609,6 +670,12 @@ PHP;
             if ($instance instanceof HasPostAction) {
                 $instance->postAction($request);
             }
+        }
+
+        // Dispatch post-action event if event dispatcher is available
+        if ($this->eventDispatcher) {
+            $event = new PostActionEvent($this, $request, $instances);
+            $this->eventDispatcher->dispatch($event, 'flow.post_action');
         }
     }
 

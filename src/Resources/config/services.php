@@ -1,13 +1,13 @@
 <?php
 
 use Flow\Asset\AssetPackage;
-use Flow\Service\FlowComponentCacheWarmer;
-use Flow\Service\FlowTwigExtension;
-use Flow\Service\Manager;
-use Flow\Service\Registry;
+use Flow\Contract\SecurityInterface;
+use Flow\Contract\Transport;
+use Flow\Security\RoleBasedSecurity;
+use Flow\Service\{FlowComponentCacheWarmer, FlowTwigExtension, Manager, Registry};
+use Flow\Transport\AjaxJsonTransport;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
-use function Symfony\Component\DependencyInjection\Loader\Configurator\param;
-use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
+use function Symfony\Component\DependencyInjection\Loader\Configurator\{param, service};
 
 return function (ContainerConfigurator $configurator) {
     $services = $configurator->services()
@@ -15,6 +15,26 @@ return function (ContainerConfigurator $configurator) {
             ->autowire(true)
             ->autoconfigure(true)
             ->public(false);
+
+
+    $services->set('flow.transport.ajax_json', AjaxJsonTransport::class)
+        ->args(
+            [service('serializer')]
+        )
+        ->alias(AjaxJsonTransport::class, 'flow.transport.ajax_json');
+
+    $services->set(Transport::class)
+        ->alias(Transport::class, AjaxJsonTransport::class);
+
+    $services->set('flow.security.role_based', RoleBasedSecurity::class)
+        ->args([
+            service('security.authorization_checker'),
+            param('flow.action_role_map'),
+        ])
+        ->alias(RoleBasedSecurity::class, 'flow.security.role_based');;
+
+    $services->set(SecurityInterface::class)
+        ->alias(SecurityInterface::class, RoleBasedSecurity::class);
 
     $services->set(Registry::class)
         ->args([

@@ -31,6 +31,16 @@ class FlowConfiguration implements ConfigurationInterface
                         ->scalarNode('dir')->defaultValue('%kernel.cache_dir%/flow')->end()
                     ->end()
                 ->end()
+                ->arrayNode('security')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->arrayNode('action_role_map')
+                            ->defaultValue([])
+                            ->useAttributeAsKey('name')
+                            ->prototype('variable')
+                        ->end()
+                    ->end()
+                ->end()
             ->end();
 
         return $treeBuilder;

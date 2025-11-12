@@ -5,7 +5,6 @@ namespace Flow\DependencyInjection;
 use Flow\Attributes\Component;
 use Flow\Attributes\State;
 use Flow\Attributes\Store;
-use Flow\Service\Manager;
 use Flow\Service\Registry;
 use ReflectionClass;
 use Symfony\Component\Config\FileLocator;
@@ -71,5 +70,6 @@ class FlowExtension extends Extension
 
         $container->setParameter('flow.cache.enabled', $config['cache']['enabled']);
         $container->setParameter('flow.cache.dir', $config['cache']['dir']);
+        $container->setParameter('flow.action_role_map', $config['security']['action_role_map']);
     }
 }
