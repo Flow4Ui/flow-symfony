@@ -34,6 +34,7 @@ class TemplateScriptParser
         'methods',
         'computed',
         'watch',
+        'data',
         'beforeCreate',
         'created',
         'beforeMount',
@@ -194,10 +195,89 @@ class TemplateScriptParser
                 throw new FlowException(sprintf('Client script "%s" section must be an object literal', $key));
             }
 
+            if ($key === 'data') {
+                $this->assertValidDataSection($valueNode);
+            }
+
             if ($this->isLifecycleKey($key)) {
                 $this->assertLifecycleHookValue($key, $valueNode);
             }
         }
+    }
+
+    private function assertValidDataSection($valueNode): void
+    {
+        if ($valueNode === null || !method_exists($valueNode, 'getType')) {
+            throw new FlowException('Client script "data" section must be a function');
+        }
+
+        $type = $valueNode->getType();
+        $isFunction = in_array($type, ['FunctionExpression', 'ArrowFunctionExpression'], true);
+
+        if (!$isFunction) {
+            throw new FlowException('Client script "data" section must be a function');
+        }
+
+        if (!$this->functionReturnsObjectLiteral($valueNode)) {
+            throw new FlowException('Client script "data" function must return an object literal');
+        }
+    }
+
+    private function functionReturnsObjectLiteral($functionNode): bool
+    {
+        if (!method_exists($functionNode, 'getType')) {
+            return false;
+        }
+
+        $type = $functionNode->getType();
+
+        if ($type === 'ArrowFunctionExpression') {
+            $body = $functionNode->getBody();
+
+            if ($body === null || !method_exists($body, 'getType')) {
+                return false;
+            }
+
+            if ($body->getType() !== 'BlockStatement') {
+                return $body->getType() === 'ObjectExpression';
+            }
+
+            if (!method_exists($body, 'getBody')) {
+                return false;
+            }
+
+            foreach ($body->getBody() as $statement) {
+                if (!method_exists($statement, 'getType') || $statement->getType() !== 'ReturnStatement') {
+                    continue;
+                }
+
+                $argument = $statement->getArgument();
+
+                return $argument !== null && method_exists($argument, 'getType') && $argument->getType() === 'ObjectExpression';
+            }
+
+            return false;
+        }
+
+        if ($type === 'FunctionExpression') {
+            $body = $functionNode->getBody();
+
+            if ($body === null || !method_exists($body, 'getType') || $body->getType() !== 'BlockStatement' || !method_exists($body, 'getBody')) {
+                return false;
+            }
+
+            foreach ($body->getBody() as $statement) {
+                if (!method_exists($statement, 'getType') || $statement->getType() !== 'ReturnStatement') {
+                    continue;
+                }
+
+                $argument = $statement->getArgument();
+
+                return $argument !== null && method_exists($argument, 'getType') && $argument->getType() === 'ObjectExpression';
+            }
+        }
+
+        return false;
     }
 
     private function extractPropertyKey(object $keyNode): string
