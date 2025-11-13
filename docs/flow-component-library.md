@@ -147,41 +147,42 @@ class CounterDashboardComponent extends AbstractComponent
 The template file (or an inline string provided through `template:`) can now reference both actions. For example, `@app/components/counter-dashboard.html` might contain the following markup. Flow also injects an `actions` proxy into the template scope so you can call methods instead of using the `invoke:action` modifier when that reads clearer, and it supports inline `<script>` blocks for Vue-compatible helpers:
 
 ```html
+
 <template>
     <section>
         <h1>{{ state.title }}</h1>
         <p class="count">Current count: {{ state.counter.count }}</p>
 
-        <button v-on:click.invoke:action="{ name: 'CounterStore.increment', args: { step: 3 } }">
+        <button v-on:click="state.counter.increment(3)">
             Increment by 3
         </button>
 
-        <button @click="actions.reset()">
+        <button @click="reset()">
             Reset counter
         </button>
     </section>
 </template>
 
 <script>
-export default {
-    methods: {
-        boostTwice() {
-            actions.increment({ step: 2 });
-        }
-    },
-    computed: {
-        isHigh() {
-            return state.counter.count >= 10;
-        }
-    },
-    watch: {
-        'state.counter.count'(value) {
-            if (value > 20) {
-                actions.reset();
+    export default {
+        methods: {
+            boostTwice() {
+                this.state.counter.increment(2);
+            }
+        },
+        computed: {
+            isHigh() {
+                return this.state.counter.count >= 10;
+            }
+        },
+        watch: {
+            'state.counter.count'(value) {
+                if (value > 20) {
+                    this.reset();
+                }
             }
         }
-    }
-};
+    };
 </script>
 ```
 
