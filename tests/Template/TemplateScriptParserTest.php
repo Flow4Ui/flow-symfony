@@ -37,8 +37,10 @@ HTML;
 
         $this->assertArrayHasKey('template', $result);
         $this->assertArrayHasKey('script', $result);
+        $this->assertArrayHasKey('styles', $result);
         $this->assertStringNotContainsString('<script>', $result['template']);
         $this->assertStringContainsString('export default', $result['script']);
+        $this->assertCount(0, $result['styles']);
     }
 
     public function testExtractScriptWithNoScript(): void
@@ -49,6 +51,43 @@ HTML;
 
         $this->assertEquals($template, $result['template']);
         $this->assertNull($result['script']);
+        $this->assertIsArray($result['styles']);
+        $this->assertCount(0, $result['styles']);
+    }
+
+    public function testExtractStylesFromTemplate(): void
+    {
+        $template = <<<HTML
+<style scoped>
+.fade-enter-active { transition: all 0.3s ease; }
+</style>
+<div class="modal">
+    <h1>{{ title }}</h1>
+</div>
+HTML;
+
+        $result = $this->parser->extractScript($template);
+
+        $this->assertCount(1, $result['styles']);
+        $styleDefinition = $result['styles'][0];
+        $this->assertSame('.fade-enter-active { transition: all 0.3s ease; }', $styleDefinition['content']);
+        $this->assertArrayHasKey('attributes', $styleDefinition);
+        $this->assertArrayHasKey('scoped', $styleDefinition['attributes']);
+        $this->assertStringNotContainsString('<style', $result['template']);
+    }
+
+    public function testStyleTagMustBeAtRootLevel(): void
+    {
+        $template = <<<HTML
+<div>
+    <style scoped>.fade-enter-active { transition: all 0.3s ease; }</style>
+</div>
+HTML;
+
+        $this->expectException(FlowException::class);
+        $this->expectExceptionMessage('The <style> tag must be placed at the root level of the template');
+
+        $this->parser->extractScript($template);
     }
 
     public function testMultipleScriptTagsThrowsException(): void

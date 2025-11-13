@@ -45,6 +45,11 @@ class Compiler
 
     protected Preprocessor|null $preprocessor = null;
     protected ?string $scriptContent = null;
+    protected array $rawStyles = [];
+    protected array $styles = [];
+    protected ?string $styleScopeId = null;
+
+    private const STYLE_SCOPE_ATTRIBUTE = 'data-flow-scope';
 
     public function __construct()
     {
@@ -59,6 +64,8 @@ class Compiler
         $scriptParser = new TemplateScriptParser();
         $extracted = $scriptParser->extractScript($template);
         $this->scriptContent = $extracted['script'];
+        $this->rawStyles = $extracted['styles'] ?? [];
+        $this->prepareStyles();
         $template = $extracted['template'];
 
         $dom = new \DOMDocument();
@@ -94,6 +101,14 @@ class Compiler
     }
 
     /**
+     * @return array<int, array{content: string, scoped: bool, attributes: array<string, string>, scopeId: string|null, hash: string}>
+     */
+    public function getStyles(): array
+    {
+        return $this->styles;
+    }
+
+    /**
      * @throws FlowException
      */
     private function compileElement(\DOMElement|\DOMText $domElement, Element|null $lastElement = null, Context|null $context = null, $root = false): Element
@@ -112,6 +127,15 @@ class Compiler
             default => in_array($nodeName, self::HTML_TAGS, true) ? new Element($nodeName) : new ComponentElement(component: $nodeName)
         };
         $element->isRoot = $root;
+        if ($root && $this->hasScopedStyles()) {
+            if ($element instanceof ComponentElement || $element instanceof TemplateElement) {
+                throw new FlowException('Scoped styles require the template root element to be a single HTML element.');
+            }
+
+            if (!($element instanceof FragmentElement)) {
+                $element->props[self::STYLE_SCOPE_ATTRIBUTE] = $this->getStyleScopeId();
+            }
+        }
         $isTemplate = $element instanceof TemplateElement;
 
         $ifExpression = null;
@@ -309,6 +333,26 @@ class Compiler
             }
         }
 
+        if ($root && $this->hasScopedStyles() && $element instanceof FragmentElement) {
+            $targetElement = null;
+
+            foreach ($element->children as $child) {
+                if ($child instanceof Element) {
+                    if ($targetElement !== null) {
+                        throw new FlowException('Scoped styles require the template root element to be a single HTML element.');
+                    }
+
+                    $targetElement = $child;
+                }
+            }
+
+            if ($targetElement === null || $targetElement instanceof ComponentElement || $targetElement instanceof FragmentElement || $targetElement instanceof TemplateElement) {
+                throw new FlowException('Scoped styles require the template root element to be a single HTML element.');
+            }
+
+            $targetElement->props[self::STYLE_SCOPE_ATTRIBUTE] = $this->getStyleScopeId();
+        }
+
         if ($ifExpression !== null) {
             $element = new IfElement($ifExpression, $element);
         }
@@ -328,6 +372,136 @@ class Compiler
         }
 
         return $element;
+    }
+
+    private function prepareStyles(): void
+    {
+        $this->styles = [];
+
+        if (empty($this->rawStyles)) {
+            $this->styleScopeId = null;
+            return;
+        }
+
+        $this->ensureStyleScopeId();
+
+        foreach ($this->rawStyles as $style) {
+            $attributes = $style['attributes'] ?? [];
+            $scoped = array_key_exists('scoped', $attributes);
+
+            if ($scoped) {
+                unset($attributes['scoped']);
+            }
+
+            $content = $style['content'] ?? '';
+            if ($scoped) {
+                $content = $this->scopeCss($content, $this->getStyleScopeSelector());
+            }
+
+            $hash = substr(sha1($content), 0, 12);
+
+            $this->styles[] = [
+                'content' => $content,
+                'scoped' => $scoped,
+                'attributes' => $attributes,
+                'scopeId' => $scoped ? $this->getStyleScopeId() : null,
+                'hash' => $hash,
+            ];
+        }
+    }
+
+    private function hasScopedStyles(): bool
+    {
+        foreach ($this->styles as $style) {
+            if (!empty($style['scoped'])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function ensureStyleScopeId(): void
+    {
+        if ($this->styleScopeId !== null) {
+            return;
+        }
+
+        $scopedStyles = array_filter($this->rawStyles, static function (array $style): bool {
+            $attributes = $style['attributes'] ?? [];
+
+            return array_key_exists('scoped', $attributes);
+        });
+
+        if (empty($scopedStyles)) {
+            return;
+        }
+
+        $seed = implode('|', array_map(static function (array $style): string {
+            return $style['content'] ?? '';
+        }, $scopedStyles));
+
+        $hash = substr(sha1($seed), 0, 8);
+        $this->styleScopeId = 's' . $hash;
+    }
+
+    private function getStyleScopeId(): string
+    {
+        $this->ensureStyleScopeId();
+
+        if ($this->styleScopeId === null) {
+            throw new FlowException('Unable to determine scoped style identifier.');
+        }
+
+        return $this->styleScopeId;
+    }
+
+    private function getStyleScopeSelector(): string
+    {
+        return '[' . self::STYLE_SCOPE_ATTRIBUTE . '="' . $this->getStyleScopeId() . '"]';
+    }
+
+    private function scopeCss(string $css, string $scopeSelector): string
+    {
+        $pattern = '/(^|})\s*([^}{@][^{}]*)\s*{/m';
+
+        $callback = function (array $matches) use ($scopeSelector) {
+            $prefix = $matches[1];
+            $selectorList = trim($matches[2]);
+
+            if ($selectorList === '') {
+                return $matches[0];
+            }
+
+            $selectors = array_map('trim', explode(',', $selectorList));
+            $processedSelectors = [];
+
+            foreach ($selectors as $selector) {
+                if ($selector === '') {
+                    continue;
+                }
+
+                if (preg_match('/^(from|to|[0-9.]+%)/i', $selector)) {
+                    $processedSelectors[] = $selector;
+                    continue;
+                }
+
+                if (str_starts_with($selector, $scopeSelector)) {
+                    $processedSelectors[] = $selector;
+                    continue;
+                }
+
+                $processedSelectors[] = $scopeSelector . ' ' . $selector;
+            }
+
+            if (empty($processedSelectors)) {
+                return $matches[0];
+            }
+
+            return $prefix . ' ' . implode(', ', $processedSelectors) . ' {';
+        };
+
+        return preg_replace_callback($pattern, $callback, $css) ?? $css;
     }
 
     /**
