@@ -44,6 +44,7 @@ class Compiler
     const V_MODEL = 'v-model';
 
     protected Preprocessor|null $preprocessor = null;
+    protected ?string $scriptContent = null;
 
     public function __construct()
     {
@@ -54,6 +55,12 @@ class Compiler
      */
     public function compile(string $template, ?Context $context)
     {
+        // Extract script tag before preprocessing
+        $scriptParser = new TemplateScriptParser();
+        $extracted = $scriptParser->extractScript($template);
+        $this->scriptContent = $extracted['script'];
+        $template = $extracted['template'];
+
         $dom = new \DOMDocument();
 
         $preprocessed = sprintf('<?xml encoding="utf-8" ?><Fragment>%s</Fragment>', $this->preprocess($template));
@@ -74,6 +81,16 @@ class Compiler
     {
         $this->preprocessor = new Preprocessor();
         return $this->preprocessor->preprocess($template);
+    }
+
+    /**
+     * Get the extracted script content from the template
+     *
+     * @return string|null
+     */
+    public function getScriptContent(): ?string
+    {
+        return $this->scriptContent;
     }
 
     /**

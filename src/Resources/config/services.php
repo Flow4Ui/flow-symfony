@@ -1,6 +1,7 @@
 <?php
 
 use Flow\Asset\AssetPackage;
+use Flow\Command\InstallFlowAssetsCommand;
 use Flow\Contract\SecurityInterface;
 use Flow\Contract\Transport;
 use Flow\Security\RoleBasedSecurity;
@@ -60,4 +61,8 @@ return function (ContainerConfigurator $configurator) {
     $services->set(FlowComponentCacheWarmer::class)
         ->tag('kernel.cache_warmer');
     $services->set(FlowTwigExtension::class);
+
+    $services->set(InstallFlowAssetsCommand::class)
+        ->arg('$projectDir', param('kernel.project_dir'))
+        ->tag('console.command');
 };

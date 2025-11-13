@@ -80,8 +80,8 @@ class Manager implements ServiceSubscriberInterface
         Registry                                     $registry,
         Environment                                  $environment,
         Transport                                    $transport,
-        EventDispatcherInterface                     $eventDispatcher = null,
-        SecurityInterface                            $security = null,
+        ?EventDispatcherInterface                    $eventDispatcher = null,
+        ?SecurityInterface                           $security = null,
         bool                                         $cacheEnabled = false,
         string                                       $cacheDir = ''
     )
@@ -153,89 +153,89 @@ class Manager implements ServiceSubscriberInterface
             $this->storeInstances = [];
             $returnContext = [];
 
-        foreach ($requestContext['stores'] as $instanceId => $store) {
-            $storeDefinition = $this->registry->getStoreDefinition($store['name']);
-            if ($storeDefinition === null) {
-                throw new FlowException(sprintf('Loading store: %s not defined', $store['name']));
-            }
-            $metadata[$instanceId] = $storeDefinition;
-            $this->storeInstances[$store['name']] = $instances[$instanceId] = $this->makeInputState($storeDefinition, $store['state'] ?? [], $store['isNew'] ?? false, $request);
-        }
-
-        foreach ($requestContext['states'] as $instanceId => $state) {
-            $stateDefinition = $this->registry->getStateDefinition($state['name']);
-
-            if ($stateDefinition === null) {
-                throw new FlowException(sprintf('Loading store: %s not defined', $state['name']));
-            }
-            $metadata[$instanceId] = $stateDefinition;
-            $instances[$instanceId] = $this->makeInputState($stateDefinition, $state['state'] ?? [], $state['isNew'] ?? false, $request);
-        }
-
-        $this->invokePreactionInstances($request, $instances);
-
-        foreach ($requestContext['actions'] as $invokeId => $action) {
-            $instanceId = $action['instanceId'];
-            $instanceDefinition = $metadata[$instanceId];
-            $name = $action['action'];
-            $actionDefinition = $instanceDefinition->actions[$name] ?? null;
-            if ($actionDefinition === null) {
-                throw new FlowException(sprintf('Invoking action: %s not defined in state manager: %s', $name, $instanceDefinition->name));
-            }
- 
-            // Check role-based permissions if security is configured
-            if ($this->security) {
-                $isAllowed = $this->security->isActionAllowed($name, $instanceDefinition, $instances[$instanceId], $action['args'] ?? []);
-                if (!$isAllowed) {
-                    throw new AccessDeniedException(sprintf('Access denied for action: %s on %s', $name, $instanceDefinition->name));
+            foreach ($requestContext['stores'] as $instanceId => $store) {
+                $storeDefinition = $this->registry->getStoreDefinition($store['name']);
+                if ($storeDefinition === null) {
+                    throw new FlowException(sprintf('Loading store: %s not defined', $store['name']));
                 }
+                $metadata[$instanceId] = $storeDefinition;
+                $this->storeInstances[$store['name']] = $instances[$instanceId] = $this->makeInputState($storeDefinition, $store['state'] ?? [], $store['isNew'] ?? false, $request);
             }
 
-            $args = !empty($action['args']) && is_array($action['args']) ? $action['args'] : [];
-            foreach ($actionDefinition->reflectionAction->getParameters() as $argIndex => $parameter) {
-                if ($parameter->hasType() && !$parameter->getType()->isBuiltin()) {
-                    $typeName = $parameter->getType()->getName();
-                    $args[$argIndex] = $this->denormalizer->denormalize($args[$argIndex], $typeName, context: [AbstractObjectNormalizer::DISABLE_TYPE_ENFORCEMENT => true]);
+            foreach ($requestContext['states'] as $instanceId => $state) {
+                $stateDefinition = $this->registry->getStateDefinition($state['name']);
+
+                if ($stateDefinition === null) {
+                    throw new FlowException(sprintf('Loading store: %s not defined', $state['name']));
                 }
+                $metadata[$instanceId] = $stateDefinition;
+                $instances[$instanceId] = $this->makeInputState($stateDefinition, $state['state'] ?? [], $state['isNew'] ?? false, $request);
             }
 
-            // Dispatch before action invoke event
-            $canProceed = true;
-            if ($this->eventDispatcher) {
-                $beforeEvent = new BeforeActionInvokeEvent($this, $request, $name, $instanceDefinition, $instances[$instanceId], $args);
-                $this->eventDispatcher->dispatch($beforeEvent, 'flow.before_action_invoke');
+            $this->invokePreactionInstances($request, $instances);
 
-                // Update args from event and check if we can proceed
-                $args = $beforeEvent->getArgs();
-                $canProceed = $beforeEvent->canProceed();
+            foreach ($requestContext['actions'] as $invokeId => $action) {
+                $instanceId = $action['instanceId'];
+                $instanceDefinition = $metadata[$instanceId];
+                $name = $action['action'];
+                $actionDefinition = $instanceDefinition->actions[$name] ?? null;
+                if ($actionDefinition === null) {
+                    throw new FlowException(sprintf('Invoking action: %s not defined in state manager: %s', $name, $instanceDefinition->name));
+                }
+
+                // Check role-based permissions if security is configured
+                if ($this->security) {
+                    $isAllowed = $this->security->isActionAllowed($name, $instanceDefinition, $instances[$instanceId], $action['args'] ?? []);
+                    if (!$isAllowed) {
+                        throw new AccessDeniedException(sprintf('Access denied for action: %s on %s', $name, $instanceDefinition->name));
+                    }
+                }
+
+                $args = !empty($action['args']) && is_array($action['args']) ? $action['args'] : [];
+                foreach ($actionDefinition->reflectionAction->getParameters() as $argIndex => $parameter) {
+                    if ($parameter->hasType() && !$parameter->getType()->isBuiltin()) {
+                        $typeName = $parameter->getType()->getName();
+                        $args[$argIndex] = $this->denormalizer->denormalize($args[$argIndex], $typeName, context: [AbstractObjectNormalizer::DISABLE_TYPE_ENFORCEMENT => true]);
+                    }
+                }
+
+                // Dispatch before action invoke event
+                $canProceed = true;
+                if ($this->eventDispatcher) {
+                    $beforeEvent = new BeforeActionInvokeEvent($this, $request, $name, $instanceDefinition, $instances[$instanceId], $args);
+                    $this->eventDispatcher->dispatch($beforeEvent, 'flow.before_action_invoke');
+
+                    // Update args from event and check if we can proceed
+                    $args = $beforeEvent->getArgs();
+                    $canProceed = $beforeEvent->canProceed();
+                }
+
+                $result = null;
+                if ($canProceed) {
+                    $result = $actionDefinition->reflectionAction->invokeArgs($instances[$instanceId], $args);
+                }
+
+                // Dispatch after action invoke event
+                if ($this->eventDispatcher) {
+                    $afterEvent = new AfterActionInvokeEvent($this, $request, $name, $instanceDefinition, $instances[$instanceId], $args, $result);
+                    $this->eventDispatcher->dispatch($afterEvent, 'flow.after_action_invoke');
+
+                    // Update result from event
+                    $result = $afterEvent->getResult();
+                }
+
+                $returnContext['actions'][$invokeId]['return'] = $result;
             }
 
-            $result = null;
-            if ($canProceed) {
-                $result = $actionDefinition->reflectionAction->invokeArgs($instances[$instanceId], $args);
+            $this->invokePostActionInstances($request, $instances);
+
+            foreach ($requestContext['stores'] as $instanceId => $store) {
+                $returnContext['stores'][$instanceId] = $this->makeOutputState($metadata[$instanceId], $instances[$instanceId]);
             }
 
-            // Dispatch after action invoke event
-            if ($this->eventDispatcher) {
-                $afterEvent = new AfterActionInvokeEvent($this, $request, $name, $instanceDefinition, $instances[$instanceId], $args, $result);
-                $this->eventDispatcher->dispatch($afterEvent, 'flow.after_action_invoke');
-
-                // Update result from event
-                $result = $afterEvent->getResult();
+            foreach ($requestContext['states'] as $instanceId => $state) {
+                $returnContext['states'][$instanceId] = $this->makeOutputState($metadata[$instanceId], $instances[$instanceId]);
             }
-
-            $returnContext['actions'][$invokeId]['return'] = $result;
-        }
-
-        $this->invokePostActionInstances($request, $instances);
-
-        foreach ($requestContext['stores'] as $instanceId => $store) {
-            $returnContext['stores'][$instanceId] = $this->makeOutputState($metadata[$instanceId], $instances[$instanceId]);
-        }
-
-        foreach ($requestContext['states'] as $instanceId => $state) {
-            $returnContext['states'][$instanceId] = $this->makeOutputState($metadata[$instanceId], $instances[$instanceId]);
-        }
 
 //        todo: implement lazy component loading
 //        if (!empty($requestContext['components'])) {
@@ -453,12 +453,16 @@ class Manager implements ServiceSubscriberInterface
     {
         $stateDefinition = $this->registry->getStateDefinition($componentDefinition->stateId);
         $flowContext = new Context($this->registry, $componentDefinition);
+        $scriptContent = null;
+
         // If the component implements a custom interface, skip
         if ($component instanceof ComponentBuilderInterface) {
             $element = $component->build($flowContext);
             $rendered = $element->render($flowContext);
         } else {
-            $rendered = $this->compileAndRenderFlowTemplate($componentDefinition, $flowContext, get_class($component));
+            $result = $this->compileAndRenderFlowTemplate($componentDefinition, $flowContext, get_class($component));
+            $rendered = $result['render'];
+            $scriptContent = $result['script'];
         }
 
         $componentClientDefinition = [
@@ -474,6 +478,12 @@ class Manager implements ServiceSubscriberInterface
                 ->getClientSideMethods()
                 ->getMethods($flowContext);
         }
+
+        // Add client-side script initialization if present
+        if ($scriptContent !== null) {
+            $scriptParser = new \Flow\Template\TemplateScriptParser();
+            $componentClientDefinition['clientInit'] = $scriptParser->transformScriptForClient($scriptContent);
+        }
 //
 //        foreach ($stateDefinition->actions as $action) {
 //            $componentClientDefinition['methods'] ??= [];
@@ -486,7 +496,7 @@ class Manager implements ServiceSubscriberInterface
         return $componentClientDefinition;
     }
 
-    private function compileAndRenderFlowTemplate(Component $definition, Context $flowContext, string $className): string
+    private function compileAndRenderFlowTemplate(Component $definition, Context $flowContext, string $className): array
     {
         // 1) Retrieve template content
         $template = $definition->template
@@ -494,13 +504,17 @@ class Manager implements ServiceSubscriberInterface
 
         if (!$template) {
             // No template -> no output
-            return '';
+            return ['render' => '', 'script' => null];
         }
 
         // 2) If caching disabled, compile fresh each time:
         if (!$this->cacheEnabled) {
-            $element = (new Compiler())->compile($template, $flowContext);
-            return $element->render($flowContext);
+            $compiler = new Compiler();
+            $element = $compiler->compile($template, $flowContext);
+            return [
+                'render' => $element->render($flowContext),
+                'script' => $compiler->getScriptContent()
+            ];
         }
 
         // 3) Build a stable filename in the Flow cache directory
@@ -514,21 +528,24 @@ class Manager implements ServiceSubscriberInterface
         // 4) Check if the file is already present
         if (is_file($filePath)) {
             // The file returns an Element or something similar
-            [$rendered, $oldHash] = require $filePath;
+            $cached = require $filePath;
+            [$rendered, $scriptContent, $oldHash] = $cached;
 
             if ($oldHash === $hash) {
-                return $rendered;
+                return ['render' => $rendered, 'script' => $scriptContent];
             }
             // If it's not valid or something changed, fallback to recompile
         }
 
         // 5) We do not have a valid cached version -> compile from scratch
-        $element = (new Compiler())->compile($template, $flowContext);
+        $compiler = new Compiler();
+        $element = $compiler->compile($template, $flowContext);
         $rendered = $element->render($flowContext);
+        $scriptContent = $compiler->getScriptContent();
 
         // 6) Cache it to a .php file
         // We'll store the serialized Element. Alternatively, build real PHP code.
-        $serialized = serialize([$rendered, $hash]);
+        $serialized = serialize([$rendered, $scriptContent, $hash]);
         $serializedExport = var_export($serialized, true);
 
         $phpCode = <<<PHP
@@ -545,7 +562,7 @@ PHP;
 
         @file_put_contents($filePath, $phpCode);
 
-        return $rendered;
+        return ['render' => $rendered, 'script' => $scriptContent];
     }
 
     /**

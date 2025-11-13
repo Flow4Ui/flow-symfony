@@ -32,7 +32,7 @@ import {
 } from 'vue';
 
 
-import {debounce, throttle} from "lodash-es";
+import {debounce, throttle} from "./helpers";
 
 
 import {createFlowRouter} from "./router";
@@ -652,6 +652,28 @@ export class Bridge {
             }
         }
 
+        // Process clientInit if present
+        let clientInitDefinition = {};
+        if (component.clientInit) {
+            try {
+                const evalFunc = new Function(component.clientInit);
+                const exportedObject = evalFunc();
+                if (exportedObject && exportedObject.methods) {
+                    // Merge methods from clientInit
+                    Object.assign(methods, exportedObject.methods);
+                }
+                // Merge other properties (lifecycle hooks, computed, etc.)
+                if (exportedObject) {
+                    for (const key in exportedObject) {
+                        if (key !== 'methods') {
+                            clientInitDefinition[key] = exportedObject[key];
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error evaluating clientInit for component ' + componentKey, e);
+            }
+        }
 
         const originalCreatedMethod = lifecycle.created;
         lifecycle.created = function () {
@@ -662,18 +684,20 @@ export class Bridge {
         this.definitions.components[componentKey] = defineComponent({
                 name: componentKey,
                 props: component.props || {},
-            setup(props, context) {
-                return self.useState(component.stateId, {
-                    ...component.state,
-                    ...toRefs(props),
-                });
-            },
+                setup(props, context) {
+                    return self.useState(component.stateId, {
+                        ...component.state,
+                        ...toRefs(props),
+                    });
+                },
                 render() {
                     let _wd = (component, directives) => wd(component, directives, this.$.appContext.directives);
                     return render.call(this, h, c, withModifiers, _wd, _Vue, this.$.appContext.components);
                 },
                 ...lifecycle,
+                ...methods,
                 watch,
+                ...clientInitDefinition,
             }
         );
         this.$app.component(component.name, this.definitions.components[componentKey]);
