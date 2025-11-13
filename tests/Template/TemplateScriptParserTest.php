@@ -158,9 +158,45 @@ JS;
     public function testScriptWithUnsupportedKeyThrowsException(): void
     {
         $this->expectException(FlowException::class);
-        $this->expectExceptionMessage('Unsupported key "data" in client script export');
+        $this->expectExceptionMessage('Unsupported key "helpers" in client script export');
 
-        $script = 'export default { data() { return {}; } };';
+        $script = 'export default { helpers: {} };';
+        $this->parser->transformScriptForClient($script);
+    }
+
+    public function testScriptAllowsDataFunctionReturningObject(): void
+    {
+        $script = <<<JS
+export default {
+    data() {
+        return {
+            inputId: 'input-' + Math.random().toString(36).substr(2, 9)
+        };
+    }
+};
+JS;
+
+        $transformed = $this->parser->transformScriptForClient($script);
+
+        $this->assertStringContainsString('var _export =', $transformed);
+        $this->assertStringContainsString('return _export', $transformed);
+    }
+
+    public function testScriptDataMustBeFunction(): void
+    {
+        $this->expectException(FlowException::class);
+        $this->expectExceptionMessage('Client script "data" section must be a function');
+
+        $script = 'export default { data: 123 };';
+        $this->parser->transformScriptForClient($script);
+    }
+
+    public function testScriptDataFunctionMustReturnObject(): void
+    {
+        $this->expectException(FlowException::class);
+        $this->expectExceptionMessage('Client script "data" function must return an object literal');
+
+        $script = 'export default { data() { return []; } };';
         $this->parser->transformScriptForClient($script);
     }
 

@@ -654,6 +654,7 @@ export class Bridge {
 
         // Process clientInit if present
         let clientInitDefinition = {};
+        let dataFunction = null;
         if (component.clientInit) {
             try {
                 const evalFunc = new Function(component.clientInit);
@@ -671,6 +672,11 @@ export class Bridge {
                 if (exportedObject.watch) {
                     Object.assign(watch, exportedObject.watch);
                     delete exportedObject.watch;
+                }
+
+                if (typeof exportedObject.data === 'function') {
+                    dataFunction = exportedObject.data;
+                    delete exportedObject.data;
                 }
 
                 const lifecycleKeys = [
@@ -711,14 +717,45 @@ export class Bridge {
             if (originalCreatedMethod) originalCreatedMethod.call(this); // Call the original created method
         };
 
+        const localDataFunction = dataFunction;
         this.definitions.components[componentKey] = defineComponent({
                 name: componentKey,
                 props: component.props || {},
                 setup(props, context) {
-                    return self.useState(component.stateId, {
+                    const runtimeState = self.useState(component.stateId, {
                         ...component.state,
                         ...toRefs(props),
                     });
+
+                    if (typeof localDataFunction === 'function') {
+                        const dataContext = Object.create(null);
+                        Object.assign(dataContext, props);
+                        Object.assign(dataContext, runtimeState);
+                        Object.defineProperty(dataContext, '$props', {
+                            value: props,
+                            enumerable: false,
+                        });
+                        Object.defineProperty(dataContext, '$flow', {
+                            value: self,
+                            enumerable: false,
+                        });
+
+                        try {
+                            const dataResult = localDataFunction.call(dataContext);
+
+                            if (dataResult && typeof dataResult === 'object') {
+                                for (const [key, value] of Object.entries(dataResult)) {
+                                    if (!Object.prototype.hasOwnProperty.call(runtimeState, key)) {
+                                        runtimeState[key] = value;
+                                    }
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error executing data() in clientInit for component ' + componentKey, error);
+                        }
+                    }
+
+                    return runtimeState;
                 },
                 render() {
                     let _wd = (component, directives) => wd(component, directives, this.$.appContext.directives);
