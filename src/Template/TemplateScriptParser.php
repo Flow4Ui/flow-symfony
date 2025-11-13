@@ -57,37 +57,79 @@ class TemplateScriptParser
      * Extract script content from template
      *
      * @param string $template The full template string
-     * @return array{template: string, script: string|null} Returns cleaned template and script content
+     * @return array{template: string, script: string|null, styles: array<int, array{content: string, attributes: array<string, string>}>}
+     * Returns cleaned template, script content, and collected style definitions
      * @throws FlowException
      */
     public function extractScript(string $template): array
     {
+        $styleExtraction = $this->extractStyles($template);
+        $templateWithoutStyles = $styleExtraction['template'];
+        $styles = $styleExtraction['styles'];
+
         // Match <script> tag with content
-        $pattern = '/<script[^>]*>(.*?)<\/script>/is';
+        $pattern = '/<script[^>]*>(.*?)<\\/script>/is';
 
         $matches = [];
-        $count = preg_match_all($pattern, $template, $matches);
+        $count = preg_match_all($pattern, $templateWithoutStyles, $matches);
 
         if ($count > 1) {
             throw new FlowException('Only one <script> tag is allowed per component template');
         }
 
         if ($count === 1) {
-            $this->assertScriptOnRootLevel($template);
+            $this->assertTagOnRootLevel($templateWithoutStyles, 'script');
 
             $scriptContent = $matches[1][0];
             // Remove the script tag from template
-            $cleanedTemplate = preg_replace($pattern, '', $template);
+            $cleanedTemplate = preg_replace($pattern, '', $templateWithoutStyles);
 
             return [
-                'template' => trim($cleanedTemplate),
-                'script' => trim($scriptContent)
+                'template' => trim((string) $cleanedTemplate),
+                'script' => trim($scriptContent),
+                'styles' => $styles,
             ];
         }
 
         return [
-            'template' => $template,
-            'script' => null
+            'template' => $templateWithoutStyles,
+            'script' => null,
+            'styles' => $styles,
+        ];
+    }
+
+    /**
+     * @return array{template: string, styles: array<int, array{content: string, attributes: array<string, string>}>}
+     */
+    private function extractStyles(string $template): array
+    {
+        $pattern = '/<style([^>]*)>(.*?)<\\/style>/is';
+        $matches = [];
+        $count = preg_match_all($pattern, $template, $matches);
+
+        if ($count === 0) {
+            return [
+                'template' => $template,
+                'styles' => [],
+            ];
+        }
+
+        $this->assertTagOnRootLevel($template, 'style');
+
+        $styles = [];
+        for ($index = 0; $index < $count; $index++) {
+            $attributes = $this->parseAttributes($matches[1][$index] ?? '');
+            $styles[] = [
+                'content' => trim($matches[2][$index] ?? ''),
+                'attributes' => $attributes,
+            ];
+        }
+
+        $cleanedTemplate = preg_replace($pattern, '', $template);
+
+        return [
+            'template' => trim((string) $cleanedTemplate),
+            'styles' => $styles,
         ];
     }
 
@@ -120,7 +162,7 @@ class TemplateScriptParser
         return $transformed;
     }
 
-    private function assertScriptOnRootLevel(string $template): void
+    private function assertTagOnRootLevel(string $template, string $tagName): void
     {
         $document = new DOMDocument();
         $previous = libxml_use_internal_errors(true);
@@ -131,16 +173,36 @@ class TemplateScriptParser
         libxml_clear_errors();
         libxml_use_internal_errors($previous);
 
-        $scripts = $document->getElementsByTagName('script');
+        $elements = $document->getElementsByTagName($tagName);
 
-        if ($scripts->length === 0) {
+        if ($elements->length === 0) {
             return;
         }
 
-        $script = $scripts->item(0);
-        if ($script !== null && $script->parentNode !== null && strtolower($script->parentNode->nodeName) !== 'body') {
-            throw new FlowException('The <script> tag must be placed at the root level of the template');
+        foreach ($elements as $element) {
+            if ($element !== null && $element->parentNode !== null && strtolower($element->parentNode->nodeName) !== 'body') {
+                throw new FlowException(sprintf('The <%s> tag must be placed at the root level of the template', $tagName));
+            }
         }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function parseAttributes(string $attributeString): array
+    {
+        $attributes = [];
+        $pattern = "/([a-zA-Z_:][\\w:.-]*)(?:\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'=<>`]+)))?/";
+
+        if (preg_match_all($pattern, $attributeString, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $name = strtolower($match[1]);
+                $value = $match[2] ?? $match[3] ?? $match[4] ?? '';
+                $attributes[$name] = $value;
+            }
+        }
+
+        return $attributes;
     }
 
     private function assertValidClientScript(string $scriptContent): void

@@ -374,6 +374,7 @@ export class Bridge {
 
     stores = {};
     metadata = {};
+    injectedStyles = new Set();
 
     batch = null;
     idGenerator = newNumericStringGenerator();
@@ -624,6 +625,10 @@ export class Bridge {
     }
 
     defineComponent(component, componentKey) {
+        if (Array.isArray(component.styles) && component.styles.length) {
+            this.ensureComponentStyles(component.styles);
+        }
+
         const render = typeof component.render === 'function' ? component.render : new Function('h', 'c', 'wm', 'wd', 'rc', component.render);
         const storage = null;
         const self = this;
@@ -798,6 +803,47 @@ export class Bridge {
         }
         if (definitions.states) {
             this.definitions.states = {...this.definitions.states, ...definitions.states};
+        }
+    }
+
+    ensureComponentStyles(styles) {
+        if (!Array.isArray(styles) || typeof document === 'undefined') {
+            return;
+        }
+
+        for (const styleDefinition of styles) {
+            if (!styleDefinition || typeof styleDefinition.content !== 'string') {
+                continue;
+            }
+
+            const styleId = styleDefinition.hash || styleDefinition.scopeId || styleDefinition.content;
+
+            if (this.injectedStyles.has(styleId)) {
+                continue;
+            }
+
+            const styleElement = document.createElement('style');
+            styleElement.type = 'text/css';
+            styleElement.textContent = styleDefinition.content;
+
+            if (styleDefinition.scopeId) {
+                styleElement.setAttribute('data-flow-style-scope', styleDefinition.scopeId);
+            }
+
+            if (styleDefinition.attributes && typeof styleDefinition.attributes === 'object') {
+                for (const [attrName, attrValue] of Object.entries(styleDefinition.attributes)) {
+                    if (attrValue === '') {
+                        styleElement.setAttribute(attrName, '');
+                    } else {
+                        styleElement.setAttribute(attrName, attrValue);
+                    }
+                }
+            }
+
+            styleElement.setAttribute('data-flow-style-hash', styleId);
+
+            document.head.appendChild(styleElement);
+            this.injectedStyles.add(styleId);
         }
     }
 }

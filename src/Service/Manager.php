@@ -454,6 +454,7 @@ class Manager implements ServiceSubscriberInterface
         $stateDefinition = $this->registry->getStateDefinition($componentDefinition->stateId);
         $flowContext = new Context($this->registry, $componentDefinition);
         $scriptContent = null;
+        $styles = [];
 
         // If the component implements a custom interface, skip
         if ($component instanceof ComponentBuilderInterface) {
@@ -463,6 +464,7 @@ class Manager implements ServiceSubscriberInterface
             $result = $this->compileAndRenderFlowTemplate($componentDefinition, $flowContext, get_class($component));
             $rendered = $result['render'];
             $scriptContent = $result['script'];
+            $styles = $result['styles'];
         }
 
         $componentClientDefinition = [
@@ -472,6 +474,10 @@ class Manager implements ServiceSubscriberInterface
             'state' => $this->makeOutputState($stateDefinition, $this->stateInstances[$stateDefinition->className])['state'],
             'render' => $rendered,
         ];
+
+        if (!empty($styles)) {
+            $componentClientDefinition['styles'] = $styles;
+        }
 
         if ($component instanceof HasClientSideMethods) {
             $componentClientDefinition['methods'] = $component
@@ -504,7 +510,7 @@ class Manager implements ServiceSubscriberInterface
 
         if (!$template) {
             // No template -> no output
-            return ['render' => '', 'script' => null];
+            return ['render' => '', 'script' => null, 'styles' => []];
         }
 
         // 2) If caching disabled, compile fresh each time:
@@ -513,7 +519,8 @@ class Manager implements ServiceSubscriberInterface
             $element = $compiler->compile($template, $flowContext);
             return [
                 'render' => $element->render($flowContext),
-                'script' => $compiler->getScriptContent()
+                'script' => $compiler->getScriptContent(),
+                'styles' => $compiler->getStyles(),
             ];
         }
 
@@ -529,10 +536,22 @@ class Manager implements ServiceSubscriberInterface
         if (is_file($filePath)) {
             // The file returns an Element or something similar
             $cached = require $filePath;
-            [$rendered, $scriptContent, $oldHash] = $cached;
 
-            if ($oldHash === $hash) {
-                return ['render' => $rendered, 'script' => $scriptContent];
+            if (is_array($cached)) {
+                $rendered = $cached[0] ?? '';
+                $scriptContent = $cached[1] ?? null;
+
+                if (isset($cached[2]) && is_array($cached[2])) {
+                    $cachedStyles = $cached[2];
+                    $oldHash = $cached[3] ?? null;
+                } else {
+                    $cachedStyles = [];
+                    $oldHash = $cached[2] ?? null;
+                }
+
+                if ($oldHash === $hash) {
+                    return ['render' => $rendered, 'script' => $scriptContent, 'styles' => $cachedStyles];
+                }
             }
             // If it's not valid or something changed, fallback to recompile
         }
@@ -542,10 +561,11 @@ class Manager implements ServiceSubscriberInterface
         $element = $compiler->compile($template, $flowContext);
         $rendered = $element->render($flowContext);
         $scriptContent = $compiler->getScriptContent();
+        $styles = $compiler->getStyles();
 
         // 6) Cache it to a .php file
         // We'll store the serialized Element. Alternatively, build real PHP code.
-        $serialized = serialize([$rendered, $scriptContent, $hash]);
+        $serialized = serialize([$rendered, $scriptContent, $styles, $hash]);
         $serializedExport = var_export($serialized, true);
 
         $phpCode = <<<PHP
@@ -562,7 +582,7 @@ PHP;
 
         @file_put_contents($filePath, $phpCode);
 
-        return ['render' => $rendered, 'script' => $scriptContent];
+        return ['render' => $rendered, 'script' => $scriptContent, 'styles' => $styles];
     }
 
     /**
