@@ -657,19 +657,49 @@ export class Bridge {
         if (component.clientInit) {
             try {
                 const evalFunc = new Function(component.clientInit);
-                const exportedObject = evalFunc();
-                if (exportedObject && exportedObject.methods) {
-                    // Merge methods from clientInit
-                    Object.assign(methods, exportedObject.methods);
+                const exportedObject = evalFunc() || {};
+
+                if (typeof exportedObject !== 'object') {
+                    throw new Error('Client init script must return an object');
                 }
-                // Merge other properties (lifecycle hooks, computed, etc.)
-                if (exportedObject) {
-                    for (const key in exportedObject) {
-                        if (key !== 'methods') {
-                            clientInitDefinition[key] = exportedObject[key];
-                        }
+
+                if (exportedObject.methods) {
+                    Object.assign(methods, exportedObject.methods);
+                    delete exportedObject.methods;
+                }
+
+                if (exportedObject.watch) {
+                    Object.assign(watch, exportedObject.watch);
+                    delete exportedObject.watch;
+                }
+
+                const lifecycleKeys = [
+                    'beforeCreate',
+                    'created',
+                    'beforeMount',
+                    'mounted',
+                    'beforeUpdate',
+                    'updated',
+                    'beforeUnmount',
+                    'unmounted',
+                    'activated',
+                    'deactivated',
+                    'errorCaptured',
+                    'renderTracked',
+                    'renderTriggered',
+                    'beforeRouteEnter',
+                    'beforeRouteUpdate',
+                    'beforeRouteLeave',
+                ];
+
+                for (const key of lifecycleKeys) {
+                    if (Object.prototype.hasOwnProperty.call(exportedObject, key)) {
+                        lifecycle[key] = exportedObject[key];
+                        delete exportedObject[key];
                     }
                 }
+
+                clientInitDefinition = exportedObject;
             } catch (e) {
                 console.error('Error evaluating clientInit for component ' + componentKey, e);
             }
