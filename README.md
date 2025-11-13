@@ -38,16 +38,18 @@ use Symfony\Component\HttpFoundation\Request;
         'initialTodos'
     ],
     template: <<<'VUE'
-<div>
-    <ul>
-        <li v-for="todo in todos" :key="todo.id">
-            {{ todo.text }}
-            <button @click="removeTodo(todo.id)">Remove</button>
-        </li>
-    </ul>
-    <input v-model="newTodo" @keyup.enter="addTodo">
-    <button @click="addTodo">Add Todo</button>
-</div>
+<template>
+    <div>
+        <ul>
+            <li v-for="todo in todos" :key="todo.id">
+                {{ todo.text }}
+                <button @click="removeTodo(todo.id)">Remove</button>
+            </li>
+        </ul>
+        <input v-model="newTodo" @keyup.enter="addTodo">
+        <button @click="addTodo">Add Todo</button>
+    </div>
+</template>
 VUE
 )]
 class TodoList extends AbstractComponent implements HasInitState
@@ -91,7 +93,8 @@ property binding, and event handling.
 
 ## Documentation
 
-For more detailed information on how to use Flow-Symfony, please refer to our [documentation](link-to-documentation).
+For more detailed information on how to use Flow-Symfony, please refer to the
+[Flow Component Library documentation](docs/flow-component-library.md).
 
 ## TODO
 
@@ -104,6 +107,8 @@ For more detailed information on how to use Flow-Symfony, please refer to our [d
 - [ ] Add more options to the flow_options template function
   - [ ] Load components asynchronously from URL
   - [ ] Load components from a CDN or route
+- [ ] Document computed properties and `$watch` helpers in templates
+- [ ] Extend the runtime to expose computed properties and `$watch` registrations
 
 ## Contributing
 
