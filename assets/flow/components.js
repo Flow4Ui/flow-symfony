@@ -767,7 +767,7 @@ export class Bridge {
                     return render.call(this, h, c, withModifiers, _wd, _Vue, this.$.appContext.components);
                 },
                 ...lifecycle,
-                ...methods,
+                methods,
                 watch,
                 ...clientInitDefinition,
             }
