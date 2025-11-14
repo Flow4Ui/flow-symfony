@@ -29,7 +29,9 @@ import {
     withDirectives,
     withKeys,
     withModifiers,
-    vShow
+    vShow,
+    Transition,
+    TransitionGroup,
 } from 'vue';
 
 
@@ -68,6 +70,8 @@ const _Vue = {
     normalizeProps,
     normalizeStyle,
     Fragment,
+    Transition,
+    TransitionGroup,
 }
 
 _Vue.resolveDirective = (name) => {
@@ -112,6 +116,9 @@ export function createFlow(flowOptions = {}) {
         install(app, options) {
             let bridge = new Bridge(app);
             let promise = null;
+
+            app.component('Transition', Transition);
+            app.component('TransitionGroup', TransitionGroup);
 
             app.config.globalProperties.$flow = bridge;
             bridge.loadDefinitions(flowOptions.definitions);
