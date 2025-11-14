@@ -29,6 +29,7 @@ class Compiler
         'strong', 'b', 'em', 'i', 'a', 'link', 'ul', 'li', 'ol', 'img', 'table', 'tr', 'td', 'th',
         'form', 'input', 'button', 'select', 'textarea', 'div', 'span', 'header', 'footer',
         'section', 'article', 'nav', 'aside', 'audio', 'video', 'hr', 'br', 'svg',
+        'main', 'label',
         // SVG tags
         'circle', 'clipPath', 'defs', 'desc', 'ellipse', 'feBlend', 'feColorMatrix',
         'feComponentTransfer', 'feComposite', 'feConvolveMatrix', 'feDiffuseLighting',

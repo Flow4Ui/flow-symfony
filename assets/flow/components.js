@@ -29,6 +29,7 @@ import {
     withDirectives,
     withKeys,
     withModifiers,
+    vShow
 } from 'vue';
 
 
@@ -45,7 +46,6 @@ const _Vue = {
     isReactive,
     reactive,
     resolveComponent,
-    resolveDirective,
     toRef,
     toRefs,
     withDirectives,
@@ -69,6 +69,13 @@ const _Vue = {
     normalizeStyle,
     Fragment,
 }
+
+_Vue.resolveDirective = (name) => {
+    if (name === 'show') {
+        return vShow;
+    }
+    return resolveDirective(name);
+};
 
 // Check the console for the AST
 function c(name, attr, children, components) {
