@@ -228,6 +228,10 @@ class Compiler
             } else if ($prop === 'v-for') {
                 [$for, $in] = explode(' in ', $value->value, 2);
                 $forExpression = new ForElement(for: new Expression($for), in: new Expression($in), do: $element);
+            } else if ($prop === 'v-html') {
+                $element->pathFlags |= PathFlags::PROPS;
+                $element->dynamicProperties[] = 'innerHTML';
+                $this->assignProp($element, 'innerHTML', new Expression($value->value));
             } else if (str_starts_with($prop, 'v-')) {
                 if ($this->isDirectiveProp($prop)) {
                     $element->directives[substr($prop, 2)] = new Expression($value->value);
@@ -531,6 +535,7 @@ class Compiler
     {
         return
             !$this->isModel($prop) &&
+            $prop !== 'v-html' &&
             !($prop === 'v-bind' || str_starts_with($prop, 'v-bind:')) &&
             !($prop === 'v-show' || str_starts_with($prop, 'v-show:'));
     }

@@ -4,9 +4,11 @@ namespace App\Tests\Template;
 
 use Flow\Component\Context;
 use Flow\Component\Element as FlowElement;
+use Flow\Component\Expression;
 use Flow\Component\FragmentElement;
 use Flow\Exception\FlowException;
 use Flow\Template\Compiler;
+use Flow\Template\PathFlags;
 use PHPUnit\Framework\TestCase;
 
 class CompilerTest extends TestCase
@@ -60,5 +62,28 @@ HTML;
         $this->expectExceptionMessage('Scoped styles require the template root element to be a single HTML element.');
 
         $compiler->compile($template, new Context());
+    }
+
+    public function testCompilerTransformsVHtmlIntoInnerHtmlProp(): void
+    {
+        $template = '<div v-html="htmlContent"></div>';
+
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+
+        $this->assertInstanceOf(FragmentElement::class, $fragment);
+        $this->assertNotEmpty($fragment->children);
+
+        $element = $fragment->children[0];
+
+        $this->assertArrayHasKey('innerHTML', $element->props);
+        $this->assertInstanceOf(Expression::class, $element->props['innerHTML']);
+        $this->assertSame('htmlContent', $element->props['innerHTML']->expression);
+        $this->assertContains('innerHTML', $element->dynamicProperties);
+        $this->assertSame(PathFlags::PROPS, $element->pathFlags & PathFlags::PROPS);
+        $this->assertEmpty($element->directives);
+
+        $rendered = $element->render(new Context());
+        $this->assertStringContainsString('{"innerHTML":this.htmlContent', $rendered);
     }
 }
