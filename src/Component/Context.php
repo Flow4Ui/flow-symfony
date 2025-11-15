@@ -4,6 +4,30 @@ namespace Flow\Component;
 
 use Flow\Attributes\Component;
 use Flow\Service\Registry;
+use Peast\Peast;
+use Peast\Syntax\Node\AssignmentPattern;
+use Peast\Syntax\Node\ArrayPattern;
+use Peast\Syntax\Node\ArrowFunctionExpression;
+use Peast\Syntax\Node\CatchClause;
+use Peast\Syntax\Node\ExportSpecifier;
+use Peast\Syntax\Node\FunctionDeclaration;
+use Peast\Syntax\Node\FunctionExpression;
+use Peast\Syntax\Node\Identifier;
+use Peast\Syntax\Node\ImportDefaultSpecifier;
+use Peast\Syntax\Node\ImportNamespaceSpecifier;
+use Peast\Syntax\Node\ImportSpecifier;
+use Peast\Syntax\Node\MemberExpression;
+use Peast\Syntax\Node\MetaProperty;
+use Peast\Syntax\Node\MethodDefinition;
+use Peast\Syntax\Node\Node as SyntaxNode;
+use Peast\Syntax\Node\ObjectPattern;
+use Peast\Syntax\Node\ParenthesizedExpression;
+use Peast\Syntax\Node\Property;
+use Peast\Syntax\Node\PropertyDefinition;
+use Peast\Syntax\Node\RestElement;
+use Peast\Syntax\Node\VariableDeclarator;
+use Peast\Syntax\Utils;
+use Throwable;
 
 class Context
 {
@@ -67,22 +91,328 @@ class Context
      */
     public function parseExpression(string $expression): string
     {
-        // if (str_contains($expression, 'item.')) xdebug_break();
-        $pattern = '/(?<!["\'])(\.?[a-zA-Z_$]\w*(?:\.[a-zA-Z_$]\w*)*)(?!["\'])/';
+        if (trim($expression) === '') {
+            return $expression;
+        }
 
+        try {
+            return $this->parseExpressionWithPeast($expression);
+        } catch (Throwable) {
+            return $this->legacyParseExpression($expression);
+        }
+    }
+
+    /**
+     * @return array{0: SyntaxNode|null, 1: int}
+     */
+    private function createExpressionAst(string $expression): array
+    {
+        $wrapped = sprintf('(%s)', $expression);
+        $program = Peast::latest($wrapped, [
+            'sourceType' => Peast::SOURCE_TYPE_MODULE,
+        ])->parse();
+
+        $body = $program->getBody();
+        if (empty($body)) {
+            return [null, 0];
+        }
+
+        $statement = $body[0];
+        if (!method_exists($statement, 'getExpression')) {
+            return [null, 0];
+        }
+
+        $node = $statement->getExpression();
+        if ($node instanceof ParenthesizedExpression) {
+            $node = $node->getExpression();
+        }
+
+        return [$node, 1];
+    }
+
+    private function parseExpressionWithPeast(string $expression): string
+    {
+        [$ast, $offset] = $this->createExpressionAst($expression);
+
+        if ($ast === null) {
+            return $expression;
+        }
+
+        $this->expandShorthandProperties($ast);
+
+        $replacements = [];
+        $this->collectReplacements($ast, null, [], $replacements, $offset, $expression);
+
+        if (empty($replacements)) {
+            return $expression;
+        }
+
+        usort($replacements, static fn(array $a, array $b) => $b['start'] <=> $a['start']);
+
+        $result = $expression;
+        foreach ($replacements as $replacement) {
+            $length = $replacement['end'] - $replacement['start'];
+            $result = substr_replace($result, $replacement['replacement'], $replacement['start'], $length);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, array{start: int, end: int, replacement: string}> $replacements
+     * @param array<int, array<int, string>> $scopeStack
+     */
+    private function collectReplacements(
+        SyntaxNode $node,
+        ?SyntaxNode $parent,
+        array $scopeStack,
+        array &$replacements,
+        int $offset,
+        string $originalExpression
+    ): void {
+        $scopeStack = $this->updateScopeStack($node, $scopeStack);
+
+        if ($node instanceof Identifier && $this->shouldReplaceIdentifier($node, $parent, $scopeStack)) {
+            $replacement = $this->getVarScope($node->getName());
+            if ($replacement !== $node->getName()) {
+                $location = $node->getLocation();
+                $start = $location->getStart()->getIndex() - $offset;
+                $end = $location->getEnd()->getIndex() - $offset;
+
+                if ($start >= 0 && $end >= $start && $end <= strlen($originalExpression)) {
+                    $replacements[] = [
+                        'start' => $start,
+                        'end' => $end,
+                        'replacement' => $replacement,
+                    ];
+                }
+            }
+        }
+
+        foreach (Utils::getNodeProperties($node, true) as $prop) {
+            $child = $node->{$prop['getter']}();
+            if ($child === null) {
+                continue;
+            }
+
+            if (is_array($child)) {
+                foreach ($child as $childNode) {
+                    if ($childNode instanceof SyntaxNode) {
+                        $this->collectReplacements($childNode, $node, $scopeStack, $replacements, $offset, $originalExpression);
+                    }
+                }
+            } elseif ($child instanceof SyntaxNode) {
+                $this->collectReplacements($child, $node, $scopeStack, $replacements, $offset, $originalExpression);
+            }
+        }
+    }
+
+    /**
+     * @param array<int, array<int, string>> $scopeStack
+     */
+    private function shouldReplaceIdentifier(Identifier $node, ?SyntaxNode $parent, array $scopeStack): bool
+    {
+        if ($this->isIdentifierInLocalScope($node->getName(), $scopeStack)) {
+            return false;
+        }
+
+        if ($this->shouldSkipIdentifier($node, $parent)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, array<int, string>> $scopeStack
+     */
+    private function isIdentifierInLocalScope(string $name, array $scopeStack): bool
+    {
+        foreach (array_reverse($scopeStack) as $scope) {
+            if (in_array($name, $scope, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function shouldSkipIdentifier(Identifier $node, ?SyntaxNode $parent): bool
+    {
+        if ($parent === null) {
+            return false;
+        }
+
+        if ($parent instanceof Property) {
+            if ($parent->getKey() === $node && !$parent->getComputed()) {
+                return true;
+            }
+
+            if ($parent->getKind() !== Property::KIND_INIT) {
+                return true;
+            }
+        }
+
+        if ($parent instanceof MemberExpression && !$parent->getComputed() && $parent->getProperty() === $node) {
+            return true;
+        }
+
+        if ($parent instanceof PropertyDefinition && $parent->getKey() === $node && !$parent->getComputed()) {
+            return true;
+        }
+
+        if ($parent instanceof MethodDefinition && $parent->getKey() === $node && !$parent->getComputed()) {
+            return true;
+        }
+
+        if ($parent instanceof ImportSpecifier || $parent instanceof ImportDefaultSpecifier || $parent instanceof ImportNamespaceSpecifier) {
+            return true;
+        }
+
+        if ($parent instanceof ExportSpecifier) {
+            return true;
+        }
+
+        if ($parent instanceof MetaProperty) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int, array<int, string>> $scopeStack
+     * @return array<int, array<int, string>>
+     */
+    private function updateScopeStack(SyntaxNode $node, array $scopeStack): array
+    {
+        $additional = [];
+
+        if ($node instanceof ArrowFunctionExpression || $node instanceof FunctionExpression || $node instanceof FunctionDeclaration) {
+            $additional = $this->extractBindingNames($node->getParams());
+
+            $id = $node instanceof FunctionDeclaration || $node instanceof FunctionExpression ? $node->getId() : null;
+            if ($id instanceof Identifier) {
+                $additional[] = $id->getName();
+            }
+        } elseif ($node instanceof CatchClause) {
+            $param = $node->getParam();
+            if ($param !== null) {
+                $additional = $this->extractBindingNames([$param]);
+            }
+        } elseif ($node instanceof VariableDeclarator) {
+            $additional = $this->extractBindingNames([$node->getId()]);
+        }
+
+        if (!empty($additional)) {
+            $scopeStack[] = $additional;
+        }
+
+        return $scopeStack;
+    }
+
+    /**
+     * @param array<int, SyntaxNode|null> $patterns
+     * @return array<int, string>
+     */
+    private function extractBindingNames(array $patterns): array
+    {
+        $names = [];
+        foreach ($patterns as $pattern) {
+            $names = array_merge($names, $this->extractBindingNamesFromPattern($pattern));
+        }
+
+        return $names;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractBindingNamesFromPattern(?SyntaxNode $pattern): array
+    {
+        if ($pattern === null) {
+            return [];
+        }
+
+        if ($pattern instanceof Identifier) {
+            return [$pattern->getName()];
+        }
+
+        if ($pattern instanceof AssignmentPattern) {
+            return $this->extractBindingNamesFromPattern($pattern->getLeft());
+        }
+
+        if ($pattern instanceof ArrayPattern) {
+            return $this->extractBindingNames($pattern->getElements());
+        }
+
+        if ($pattern instanceof ObjectPattern) {
+            $names = [];
+            foreach ($pattern->getProperties() as $property) {
+                if ($property instanceof Property) {
+                    $names = array_merge($names, $this->extractBindingNamesFromPattern($property->getValue()));
+                } elseif ($property instanceof RestElement) {
+                    $names = array_merge($names, $this->extractBindingNamesFromPattern($property->getArgument()));
+                }
+            }
+
+            return $names;
+        }
+
+        if ($pattern instanceof RestElement) {
+            return $this->extractBindingNamesFromPattern($pattern->getArgument());
+        }
+
+        return [];
+    }
+
+    private function expandShorthandProperties(SyntaxNode $node): void
+    {
+        if ($node instanceof Property && $node->getShorthand() && !$node->getComputed()) {
+            $key = $node->getKey();
+            if ($key instanceof Identifier) {
+                $newKey = new Identifier();
+                $newKey->setName($key->getName());
+                $node->setKey($newKey);
+                $node->setShorthand(false);
+                $node->setValue($key);
+            }
+        }
+
+        foreach (Utils::getNodeProperties($node, true) as $prop) {
+            $child = $node->{$prop['getter']}();
+            if ($child === null) {
+                continue;
+            }
+
+            if (is_array($child)) {
+                foreach ($child as $childNode) {
+                    if ($childNode instanceof SyntaxNode) {
+                        $this->expandShorthandProperties($childNode);
+                    }
+                }
+            } elseif ($child instanceof SyntaxNode) {
+                $this->expandShorthandProperties($child);
+            }
+        }
+    }
+
+    private function legacyParseExpression(string $expression): string
+    {
+        $pattern = '/(?<!["\'])(\.?[a-zA-Z_$]\w*(?:\.[a-zA-Z_$]\w*)*)(?!["\'])/';
         $callback = fn($matches) => $this->getVarScope($matches[0]);
 
-        // Split expression into parts with and without strings
         $parts = preg_split('/(["\'].+?["\'])/', $expression, -1, PREG_SPLIT_DELIM_CAPTURE);
-        $replacements = [];
+        if ($parts === false) {
+            return $expression;
+        }
 
-        // Perform identifier replacement on non-string parts
+        $replacements = [];
         for ($i = 0; $i < count($parts); $i += 2) {
             $nonStringPart = $parts[$i];
             $replacements[] = preg_replace_callback($pattern, $callback, $nonStringPart);
         }
 
-        // Join all the parts back together
         $result = '';
         for ($i = 0; $i < count($replacements); $i++) {
             $result .= $replacements[$i];
