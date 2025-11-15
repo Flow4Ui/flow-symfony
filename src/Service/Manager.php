@@ -193,9 +193,31 @@ class Manager implements ServiceSubscriberInterface
 
                 $args = !empty($action['args']) && is_array($action['args']) ? $action['args'] : [];
                 foreach ($actionDefinition->reflectionAction->getParameters() as $argIndex => $parameter) {
-                    if ($parameter->hasType() && !$parameter->getType()->isBuiltin()) {
-                        $typeName = $parameter->getType()->getName();
-                        $args[$argIndex] = $this->denormalizer->denormalize($args[$argIndex], $typeName, context: [AbstractObjectNormalizer::DISABLE_TYPE_ENFORCEMENT => true]);
+                    if ($parameter->hasType()) {
+                        $type = $parameter->getType();
+                        $typeName = null;
+
+                        // Handle ReflectionNamedType
+                        if ($type instanceof \ReflectionNamedType) {
+                            if (!$type->isBuiltin()) {
+                                $typeName = $type->getName();
+                            }
+                        }
+                        // Handle ReflectionUnionType
+                        elseif ($type instanceof \ReflectionUnionType) {
+                            // For union types, find the first non-builtin type
+                            foreach ($type->getTypes() as $unionType) {
+                                if ($unionType instanceof \ReflectionNamedType && !$unionType->isBuiltin()) {
+                                    $typeName = $unionType->getName();
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Denormalize if we found a non-builtin type
+                        if ($typeName !== null) {
+                            $args[$argIndex] = $this->denormalizer->denormalize($args[$argIndex], $typeName, context: [AbstractObjectNormalizer::DISABLE_TYPE_ENFORCEMENT => true]);
+                        }
                     }
                 }
 

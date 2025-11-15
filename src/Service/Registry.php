@@ -146,7 +146,24 @@ class Registry
             }
 
             if (empty($storeProperty->property) && $property->hasType()) {
-                $storeName = $this->getStoreDefinition($property->getType()->getName(), true)?->name;
+                $type = $property->getType();
+                $typeName = null;
+
+                // Handle ReflectionNamedType
+                if ($type instanceof \ReflectionNamedType) {
+                    $typeName = $type->getName();
+                }
+                // Handle ReflectionUnionType - get the first type
+                elseif ($type instanceof \ReflectionUnionType) {
+                    $types = $type->getTypes();
+                    if (!empty($types) && $types[0] instanceof \ReflectionNamedType) {
+                        $typeName = $types[0]->getName();
+                    }
+                }
+
+                if ($typeName !== null) {
+                    $storeName = $this->getStoreDefinition($typeName, true)?->name;
+                }
             }
 
             if (empty($storeName)) {
