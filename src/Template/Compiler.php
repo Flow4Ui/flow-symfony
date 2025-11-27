@@ -29,7 +29,7 @@ class Compiler
         'strong', 'b', 'em', 'i', 'a', 'link', 'ul', 'li', 'ol', 'img', 'table', 'tr', 'td', 'th',
         'form', 'input', 'button', 'select', 'textarea', 'div', 'span', 'header', 'footer',
         'section', 'article', 'nav', 'aside', 'audio', 'video', 'hr', 'br', 'svg',
-        'main', 'label',
+        'main', 'label', 'tbody', 'thead', 'tfoot', 'colgroup', 'col', 'caption', 'option',
         // SVG tags
         'circle', 'clipPath', 'defs', 'desc', 'ellipse', 'feBlend', 'feColorMatrix',
         'feComponentTransfer', 'feComposite', 'feConvolveMatrix', 'feDiffuseLighting',
@@ -146,12 +146,25 @@ class Compiler
         foreach ($domElement->attributes as $prop => $value) {
             $prop = $this->getNameFromId($prop);
 
-            if ($isTemplate && str_starts_with($prop, self::V_SLOT)) {
-                $templateName = substr($prop, strlen(self::V_SLOT));
-                $this->assignProp($element, 'name', $templateName);
-                $element->name = $templateName;
-                $element->propsName = $value->value;
-                continue;
+            $slotName = $this->resolveSlotDirective($prop);
+            if ($slotName !== null) {
+                if ($isTemplate) {
+                    $this->assignProp($element, 'name', $slotName);
+                    $element->name = $slotName;
+                    $element->propsName = $value->value;
+                    continue;
+                }
+
+                if ($element instanceof ComponentElement) {
+                    if ($slotName !== 'default') {
+                        throw new FlowException('Named slots are not supported when using v-slot on component elements.');
+                    }
+
+                    $element->slotPropsName = $value->value;
+                    continue;
+                }
+
+                throw new FlowException('v-slot can only be used on <template> or component elements.');
             }
 
             if ($prop === 'name' && $isTemplate) {
@@ -234,7 +247,7 @@ class Compiler
                 $element->dynamicProperties[] = 'innerHTML';
                 $this->assignProp($element, 'innerHTML', new Expression($value->value));
             } else if (str_starts_with($prop, 'v-')) {
-                if ($this->isDirectiveProp($prop)) {
+                if (!$this->isModel($prop) && $this->isDirectiveProp($prop)) {
                     $element->directives[substr($prop, 2)] = new Expression($value->value);
                 } else {
                     if ($this->isModel($prop)) {
@@ -369,7 +382,12 @@ class Compiler
 
         if ($else) {
             if ($lastElement instanceof IfElement) {
-                $lastElement->else = $element;
+                $currentElement = $lastElement;
+                //todo check here if possibility of infinite loop
+                while ($currentElement->else !== null) {
+                    $currentElement = $currentElement->else;
+                }
+                $currentElement->else = $element;
                 return $lastElement;
             } else {
                 throw new FlowException('unexpected v-else');
@@ -509,6 +527,25 @@ class Compiler
         return preg_replace_callback($pattern, $callback, $css) ?? $css;
     }
 
+    private function resolveSlotDirective(?string $prop): ?string
+    {
+        if ($prop === null) {
+            return null;
+        }
+
+        if ($prop === 'v-slot') {
+            return 'default';
+        }
+
+        if (str_starts_with($prop, self::V_SLOT)) {
+            $slotName = substr($prop, strlen(self::V_SLOT));
+
+            return $slotName === '' ? 'default' : $slotName;
+        }
+
+        return null;
+    }
+
     /**
      * @param Element $element
      * @param string $prop
@@ -547,7 +584,7 @@ class Compiler
      */
     public function isModel($prop): bool
     {
-        return ($prop === self::V_MODEL || str_starts_with($prop, 'v-model:'));
+        return ($prop === self::V_MODEL || str_starts_with($prop, 'v-model:') || str_starts_with($prop, 'v-model.'));
     }
 
     protected function compileInvokeModifierArguments(array $arguments): array

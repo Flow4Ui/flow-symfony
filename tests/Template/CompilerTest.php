@@ -2,10 +2,12 @@
 
 namespace App\Tests\Template;
 
+use Flow\Component\ComponentElement;
 use Flow\Component\Context;
 use Flow\Component\Element as FlowElement;
 use Flow\Component\Expression;
 use Flow\Component\FragmentElement;
+use Flow\Component\TemplateElement;
 use Flow\Exception\FlowException;
 use Flow\Template\Compiler;
 use Flow\Template\PathFlags;
@@ -85,5 +87,43 @@ HTML;
 
         $rendered = $element->render(new Context());
         $this->assertStringContainsString('{"innerHTML":this.htmlContent', $rendered);
+    }
+
+    public function testTemplateSupportsDefaultVSlotShorthand(): void
+    {
+        $template = '<MyComponent><template v-slot="{ user }"><span>{{ user.name }}</span></template></MyComponent>';
+
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+
+        $this->assertInstanceOf(FragmentElement::class, $fragment);
+        $this->assertNotEmpty($fragment->children);
+        $component = $fragment->children[0];
+        $this->assertInstanceOf(ComponentElement::class, $component);
+        $this->assertNotEmpty($component->children);
+        $slotTemplate = $component->children[0];
+        $this->assertInstanceOf(TemplateElement::class, $slotTemplate);
+        $this->assertSame('default', $slotTemplate->name);
+        $this->assertSame('{ user }', $slotTemplate->propsName);
+    }
+
+    public function testComponentSlotShorthandAssignsPropsName(): void
+    {
+        $template = '<Popover v-slot="{ open }"><div v-if="open"></div></Popover>';
+
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+
+        $this->assertInstanceOf(FragmentElement::class, $fragment);
+        $this->assertNotEmpty($fragment->children);
+        $component = $fragment->children[0];
+        $this->assertInstanceOf(ComponentElement::class, $component);
+        $this->assertSame('{ open }', $component->slotPropsName);
+
+        $component->renderChildren(new Context());
+        $this->assertArrayHasKey('default', $component->children);
+        $defaultSlot = $component->children['default'];
+        $this->assertInstanceOf(TemplateElement::class, $defaultSlot);
+        $this->assertSame('{ open }', $defaultSlot->propsName);
     }
 }

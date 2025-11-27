@@ -30,7 +30,16 @@ class TemplateElement extends Element
             return implode(',', $this->renderChildren($context));
         }
         $propsName = $this->propsName ?? $this->props['props-name'] ?? $this->props['propsName'] ?? '';
-        $context = $context->addScope([$propsName]);
+        if (!empty($propsName)) {
+            $propsNameScope = [];
+            if (str_starts_with($propsName, '{')) {
+                $propsNameScope = array_map('trim', explode(',', substr($propsName, 1, -1)));
+            } else {
+                $propsNameScope[] = $propsName;
+            }
+            $context = $context->addScope($propsNameScope);
+        }
+
         return sprintf('%s:v.withCtx((%s)=>{return [%s];}/*,undefined,true*/)', json_encode($this->name), $propsName, implode(',', $this->renderChildren($context)));
     }
 

@@ -9,6 +9,7 @@ class ComponentElement extends Element
 
     protected string|null $component;
     protected $componentIs;
+    public string|null $slotPropsName = null;
 
     public function __construct(string|null $component = null, array $props = [], Element|array|string $children = [])
     {
@@ -41,6 +42,14 @@ class ComponentElement extends Element
             $returnChildren['default'] = isset($returnChildren['default']) ?
                 $returnChildren['default']->addChildren($children)
                 : new TemplateElement('default', children: $children);
+        }
+
+        if (
+            $this->slotPropsName !== null
+            && isset($returnChildren['default'])
+            && $returnChildren['default']->propsName === null
+        ) {
+            $returnChildren['default']->propsName = $this->slotPropsName;
         }
 
         $this->children = $returnChildren;

@@ -803,7 +803,7 @@ PHP;
             $method = $action->name;
             $methods[$method] = [
                 'params' => [],
-                'func' => sprintf('this.invoke.call(this,"%s",Array.prototype.slice.call(arguments));', $method),
+                'func' => sprintf('return this.invoke.call(this,"%s",Array.prototype.slice.call(arguments));', $method),
             ];
         }
         return $methods;
