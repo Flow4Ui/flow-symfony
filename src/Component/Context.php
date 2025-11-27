@@ -149,13 +149,7 @@ class Context
 
         usort($replacements, static fn(array $a, array $b) => $b['start'] <=> $a['start']);
 
-        $result = $expression;
-        foreach ($replacements as $replacement) {
-            $length = $replacement['end'] - $replacement['start'];
-            $result = substr_replace($result, $replacement['replacement'], $replacement['start'], $length);
-        }
-
-        return $result;
+        return $this->applyReplacements($expression, $replacements);
     }
 
     /**
@@ -364,6 +358,34 @@ class Context
         }
 
         return [];
+    }
+
+    /**
+     * @param array<int, array{start: int, end: int, replacement: string}> $replacements
+     */
+    private function applyReplacements(string $expression, array $replacements): string
+    {
+        $result = $expression;
+        foreach ($replacements as $replacement) {
+            $length = $replacement['end'] - $replacement['start'];
+            $result = $this->substrReplaceMultibyte($result, $replacement['replacement'], $replacement['start'], $length);
+        }
+
+        return $result;
+    }
+
+    private function substrReplaceMultibyte(string $string, string $replacement, int $start, int $length): string
+    {
+        if (function_exists('mb_substr')) {
+            $before = mb_substr($string, 0, $start, 'UTF-8');
+            $after = mb_substr($string, $start + $length, null, 'UTF-8');
+
+            if ($before !== false && $after !== false) {
+                return $before . $replacement . $after;
+            }
+        }
+
+        return substr_replace($string, $replacement, $start, $length);
     }
 
     private function expandShorthandProperties(SyntaxNode $node): void

@@ -30,4 +30,16 @@ class ContextTest extends TestCase
 
         $this->assertSame('this.items.map(item => item.id)', $result);
     }
+
+    public function testParseExpressionHandlesUnicodeLiterals(): void
+    {
+        $context = new Context();
+        $result = $context->parseExpression("foo ? '—' : bar");
+
+        $this->assertSame("this.foo ? '—' : this.bar", $result);
+
+        $result = $context->parseExpression("unvalued ? '—' : formatMoney(lineTotal(entry))");
+
+        $this->assertSame("this.unvalued ? '—' : this.formatMoney(this.lineTotal(this.entry))", $result);
+    }
 }
