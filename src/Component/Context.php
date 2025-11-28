@@ -67,7 +67,9 @@ class Context
         'of',
         'console',
         'Date',
-        'Regex'
+        'Regex',
+        'Math',
+        'Number'
     ]];
     protected array $globals = ['$window', '$document'];
     /**

@@ -165,7 +165,7 @@ class Batch {
     }
 
     appendInvokeAction(ctx, state, action, args) {
-        let callId = this.callId = this.promises.length;
+        let callId = this.callId = this.actions.length;
         let promise = this.appendPromise(response => response.actions[callId].return);
 
         this.actions.push({
