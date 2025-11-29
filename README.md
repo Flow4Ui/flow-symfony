@@ -101,15 +101,11 @@ For more detailed information on how to use Flow-Symfony, please refer to the
 - [ ] Enhance the JavaScript transport library
 - [ ] Refine the manager
     - [ ] Extract the server-side transport logic into a class
-- [ ] Implement Expression Language for client-side code compilation and validation
-- [ ] Add support for styles
 - [ ] Implement server-side rendering
 - [ ] Add more options to the flow_options template function
-  - [ ] Load components asynchronously from URL
-  - [ ] Load components from a CDN or route
-- [ ] Document computed properties and `$watch` helpers in templates
-- [ ] Extend the runtime to expose computed properties and `$watch` registrations
-
+  - [ ] Load components from url.
+  - [ ] Add support for customer transport url
+  
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

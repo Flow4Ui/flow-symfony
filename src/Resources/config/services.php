@@ -31,6 +31,8 @@ return function (ContainerConfigurator $configurator) {
         ->args([
             service('security.authorization_checker'),
             param('flow.action_role_map'),
+            param('flow.component_role_map'),
+            param('flow.security.component_enabled'),
         ])
         ->alias(RoleBasedSecurity::class, 'flow.security.role_based');;
 
@@ -50,6 +52,9 @@ return function (ContainerConfigurator $configurator) {
     $services->set(Manager::class, Manager::class)
         ->arg('$cacheEnabled', param('flow.cache.enabled'))
         ->arg('$cacheDir', param('flow.cache.dir'))
+        ->arg('$componentSecurityEnabled', param('flow.security.component_enabled'))
+        ->arg('$unauthorizedRoute', param('flow.security.unauthorized_route'))
+        ->arg('$loginRoute', param('flow.security.login_route'))
         ->public();
 
 

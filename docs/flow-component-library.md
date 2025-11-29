@@ -54,6 +54,9 @@ flow:
     enabled: true
     dir: '%kernel.cache_dir%/flow'
   security:
+    component_security: false
+    login_route: null         # string path or { name: 'route_name', params: {...} }
+    unauthorized_route: null  # string path or { name: 'route_name', params: {...} }
     action_role_map:
       'deleteUser': 'ROLE_ADMIN'
       'UserManager.createUser': ['ROLE_ADMIN', 'ROLE_EDITOR']
@@ -215,6 +218,29 @@ Annotate classes with `#[Router]` to describe client-side routes. Registry store
 ### Security
 
 Flow ships with a role-based security adapter. Configure an action-to-role map in `flow.security.action_role_map`, or attach roles directly on an action attribute. The `RoleBasedSecurity` service checks the active user's roles before allowing a method to execute.【F:src/Security/RoleBasedSecurity.php†L9-L70】【F:src/DependencyInjection/FlowExtension.php†L65-L74】
+
+You can also secure components when enabled in configuration. Set `flow.security.component_security: true`, optionally map roles via `component_role_map`, and declare redirects for unauthorized users:
+
+```yaml
+flow:
+  security:
+    component_security: true
+    route_security: true
+    login_route: '/login'
+    unauthorized_route: '/forbidden'
+    component_role_map:
+      'admin-dashboard': 'ROLE_ADMIN'
+```
+
+Components can declare roles and denied behaviour inline:
+
+```php
+#[Component(name: 'admin-dashboard', roles: ['ROLE_ADMIN'], onDenied: 'render')]
+#[Router(path: '/admin', name: 'admin.dashboard')]
+class AdminDashboard extends AbstractComponent { /* ... */ }
+```
+
+When component security denies access, Flow skips lifecycle hooks such as `HasInitState`, blocks deserialization and actions for that component, and injects `authorized: false` into its state payload. By default (`onDenied: 'redirect'`) Flow will redirect authenticated users to `flow.security.unauthorized_route` and guests to `flow.security.login_route`. Set `onDenied: 'render'` to allow the component to render while exposing `$security.accessDeniedComponents` on the client for custom handling. Router metadata is filtered based on component access.【F:src/Attributes/Component.php†L6-L25】【F:src/Service/Manager.php†L145-L200】【F:src/Security/RoleBasedSecurity.php†L9-L90】
 
 ### Transports
 

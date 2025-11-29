@@ -2,7 +2,7 @@
 
 namespace Flow\Contract;
 
-use Flow\Attributes\State;
+use Flow\Attributes\{Component, Router, State};
 
 interface SecurityInterface
 {
@@ -21,4 +21,10 @@ interface SecurityInterface
      * @return bool True if the user is allowed to execute the action
      */
     public function isActionAllowed(string $action, State $instanceDefinition, object $instance, array $args): bool;
+
+    /**
+     * Check if the current user can use a component (and therefore its state lifecycle).
+     */
+    public function isComponentAllowed(Component $component): bool;
+
 }

@@ -103,6 +103,13 @@ window.FlowOptions = window.FlowOptions || {
     autoloadComponents: "*",
     mount: '#flow-container',
     mainComponent: null,
+    security: {
+        componentSecurity: false,
+        unauthorizedRoute: null,
+        loginRoute: null,
+        accessDeniedComponents: [],
+        redirect: null,
+    },
 };
 
 export function createFlow(flowOptions = {}) {
@@ -110,6 +117,7 @@ export function createFlow(flowOptions = {}) {
         autoloadComponents: null,
         whenReady: null,
         definitions: null,
+        security: null,
         ...flowOptions
     } : window.FlowOptions;
     return {
@@ -121,6 +129,7 @@ export function createFlow(flowOptions = {}) {
             app.component('TransitionGroup', TransitionGroup);
 
             app.config.globalProperties.$flow = bridge;
+            bridge.security = flowOptions.security || {};
             bridge.loadDefinitions(flowOptions.definitions);
             if (flowOptions.autoloadComponents) {
                 promise = bridge.useComponents(flowOptions.autoloadComponents);
@@ -242,6 +251,44 @@ class Batch {
         });
     }
 
+    rejectAll(error) {
+        for (const promise of this.promises) {
+            promise.reject(error);
+        }
+        this.promises = [];
+    }
+
+    async handleUnauthorized(flow, returnContext, status) {
+        const optionsSecurity = this.options?.security || {};
+        const security = returnContext?.security || {};
+        const loginRoute = security.loginRoute ?? optionsSecurity.loginRoute ?? optionsSecurity?.loginRoute;
+        const unauthorizedRoute = security.unauthorizedRoute ?? optionsSecurity.unauthorizedRoute ?? optionsSecurity?.unauthorizedRoute;
+
+        let targetRoute = null;
+        if (status === 401 && loginRoute) {
+            targetRoute = loginRoute;
+        } else if (unauthorizedRoute) {
+            targetRoute = unauthorizedRoute;
+        } else if (loginRoute) {
+            targetRoute = loginRoute;
+        }
+
+        if (targetRoute) {
+            const router = this.options?.router || flow.$app?.config?.globalProperties?.$router;
+            if (router && typeof router.push === 'function') {
+                try {
+                    await router.push(targetRoute);
+                    return;
+                } catch (err) {
+                    // fall back to hard navigation
+                }
+            }
+            if (typeof window !== 'undefined') {
+                window.location.href = typeof targetRoute === 'string' ? targetRoute : router?.resolve?.(targetRoute)?.href || '/';
+            }
+        }
+    }
+
     async execute(flow) {
         let requestContext;
         let definitions = flow.definitions;
@@ -302,12 +349,31 @@ class Batch {
             };
         }
 
-        let returnContext = await fetch(this.url, {
+        const response = await fetch(this.url, {
             method: 'POST',
             headers: {"Content-type": "application/json;charset=UTF-8"},
             //body: JSON.stringify(requestContext, (k, v) => v === null ? '@@@null@@@' : v).replace(JSON.stringify('@@@null@@@'), 'null'),
             body: JSON.stringify(requestContext, (k, v) => v === undefined ? null : v),
-        }).then(r => r.json());
+        });
+
+        const status = response.status;
+        let returnContext = await response.json();
+
+        if (status === 401 || status === 403 || returnContext?.error?.type?.includes('AccessDeniedException')) {
+            await this.handleUnauthorized(flow, returnContext, status);
+            this.rejectAll(returnContext.error || new Error(returnContext?.error?.message || 'Access denied'));
+            return false;
+        }
+
+        if (returnContext.security) {
+            flow.security = {
+                ...flow.security,
+                ...returnContext.security,
+            };
+            if (returnContext.security.redirect) {
+                await this.handleUnauthorized(flow, returnContext, status || 200);
+            }
+        }
 
         if (typeof returnContext.definitions !== 'undefined') {
             definitions = returnContext.definitions;
@@ -315,13 +381,17 @@ class Batch {
         }
 
         // apply modifications on stores
-        for (const storesKey in returnContext.stores) {
-            this.assignStore(storesKey, returnContext, flow);
+        if (returnContext.stores) {
+            for (const storesKey in returnContext.stores) {
+                this.assignStore(storesKey, returnContext, flow);
+            }
         }
 
         // apply modifications on state instances
-        for (const statesKey in returnContext.states) {
-            this.assignState(statesKey, returnContext, flow);
+        if (returnContext.states) {
+            for (const statesKey in returnContext.states) {
+                this.assignState(statesKey, returnContext, flow);
+            }
         }
 
         for (let i = 0; i < this.promises.length; i++) {
@@ -389,6 +459,7 @@ export class Bridge {
     stores = {};
     metadata = {};
     injectedStyles = new Set();
+    security = {};
 
     batch = null;
     idGenerator = newNumericStringGenerator();
@@ -413,8 +484,10 @@ export class Bridge {
     }
 
 
-    beginBatch(options) {
+    beginBatch(options = {}) {
         if (!this.batch) {
+            options.security = options.security || this.security;
+            options.router = options.router || this.$app.config?.globalProperties?.$router;
             let newBatch = new Batch(this.url, options);
             this.batch = newBatch;
             setTimeout(async () => {

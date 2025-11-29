@@ -69,7 +69,15 @@ class Context
         'Date',
         'Regex',
         'Math',
-        'Number'
+        'Number',
+        'Object',
+        'Array',
+        'String',
+        'Boolean',
+        'Symbol',
+        'BigInt',
+        'undefined',
+        'null',
     ]];
     protected array $globals = ['$window', '$document'];
     /**

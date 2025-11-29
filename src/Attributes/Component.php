@@ -19,6 +19,8 @@ class Component
         public string|null $stateId = null,
         public string|null $template = null,
         public string|null $templatePath = null,
+        public array|null  $roles = null,
+        public string      $onDenied = 'redirect',
         public bool        $client = false,
     )
     {

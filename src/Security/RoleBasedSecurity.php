@@ -2,22 +2,27 @@
 
 namespace Flow\Security;
 
-use Flow\Attributes\State;
+use Flow\Attributes\{Component, State};
 use Flow\Contract\SecurityInterface;
 use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
-use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 
 class RoleBasedSecurity implements SecurityInterface
 {
     private AuthorizationCheckerInterface $authorizationChecker;
     private array $actionRoleMap;
+    private array $componentRoleMap;
+    private bool $componentSecurityEnabled;
 
     public function __construct(
         AuthorizationCheckerInterface $authorizationChecker,
-        array $actionRoleMap = []
+        array                        $actionRoleMap = [],
+        array                        $componentRoleMap = [],
+        bool                         $componentSecurityEnabled = false,
     ) {
         $this->authorizationChecker = $authorizationChecker;
         $this->actionRoleMap = $actionRoleMap;
+        $this->componentRoleMap = $componentRoleMap;
+        $this->componentSecurityEnabled = $componentSecurityEnabled;
     }
 
     /**
@@ -52,6 +57,33 @@ class RoleBasedSecurity implements SecurityInterface
             }
         }
 
+        return $this->checkRoles($rolesToCheck);
+    }
+
+    public function isComponentAllowed(Component $component): bool
+    {
+        if (!$this->componentSecurityEnabled) {
+            return true;
+        }
+
+        $rolesToCheck = $component->roles;
+
+        if ($rolesToCheck === null) {
+            if (isset($this->componentRoleMap[$component->name])) {
+                $rolesToCheck = $this->componentRoleMap[$component->name];
+            } elseif (isset($this->componentRoleMap['*'])) {
+                $rolesToCheck = $this->componentRoleMap['*'];
+            }
+        }
+
+        return $this->checkRoles($rolesToCheck);
+    }
+
+    /**
+     * @param array|string|null $rolesToCheck
+     */
+    private function checkRoles(array|string|null $rolesToCheck): bool
+    {
         // If no role mapping found, allow access by default
         if ($rolesToCheck === null) {
             return true;
