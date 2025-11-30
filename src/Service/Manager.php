@@ -303,8 +303,7 @@ class Manager implements ServiceSubscriberInterface
                             if (!$type->isBuiltin()) {
                                 $typeName = $type->getName();
                             }
-                        }
-                        // Handle ReflectionUnionType
+                        } // Handle ReflectionUnionType
                         elseif ($type instanceof \ReflectionUnionType) {
                             // For union types, find the first non-builtin type
                             foreach ($type->getTypes() as $unionType) {
@@ -546,21 +545,24 @@ class Manager implements ServiceSubscriberInterface
         }
 
 
+        $flowOptions = [
+            'definitions' => $definitions,
+            'router' => [
+                'enabled' => $this->registry->isRouterEnabled(),
+                'routes' => $this->getAuthorizedRoutes(),
+                'mode' => $this->registry->getRouterMode(),
+                'base' => $this->registry->getRouterBase(),
+            ],
+            'security' => $this->getSecurityMetadata(),
+        ];
+
+
         $jsObject = json_encode(
-            [
-                'definitions' => $definitions,
-                'router' => [
-                    'enabled' => $this->registry->isRouterEnabled(),
-                    'routes' => $this->getAuthorizedRoutes(),
-                    'mode' => $this->registry->getRouterMode(),
-                    'base' => $this->registry->getRouterBase(),
-                ],
-                'security' => $this->getSecurityMetadata(),
-            ]
+            $flowOptions
         );
 
         if (!empty($placeholders)) {
-            $jsObject = str_replace(array_keys($placeholders), array_values($placeholders), $jsObject);
+            $jsObject = strtr($jsObject, $placeholders);
         }
         return $jsObject;
     }
@@ -615,6 +617,7 @@ class Manager implements ServiceSubscriberInterface
             'props' => $componentDefinition->props,
             'state' => $this->makeOutputState($stateDefinition, $this->stateInstances[$stateDefinition->className])['state'],
             'render' => $rendered,
+            'clientInit' => $scriptContent,
         ];
 
         if (!empty($styles)) {
@@ -627,12 +630,7 @@ class Manager implements ServiceSubscriberInterface
                 ->getMethods($flowContext);
         }
 
-        // Add client-side script initialization if present
-        if ($scriptContent !== null) {
-            $scriptParser = new \Flow\Template\TemplateScriptParser();
-            $componentClientDefinition['clientInit'] = $scriptParser->transformScriptForClient($scriptContent);
-        }
-//
+
 //        foreach ($stateDefinition->actions as $action) {
 //            $componentClientDefinition['methods'] ??= [];
 //            $componentClientDefinition['methods'][$action->name] = [

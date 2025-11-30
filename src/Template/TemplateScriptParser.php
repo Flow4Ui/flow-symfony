@@ -84,9 +84,9 @@ class TemplateScriptParser
             $scriptContent = $matches[1][0];
             // Remove the script tag from template
             $cleanedTemplate = preg_replace($pattern, '', $templateWithoutStyles);
-
+            $scriptContent = $this->transformScriptForClient($scriptContent);
             return [
-                'template' => trim((string) $cleanedTemplate),
+                'template' => trim((string)$cleanedTemplate),
                 'script' => trim($scriptContent),
                 'styles' => $styles,
             ];
@@ -129,7 +129,7 @@ class TemplateScriptParser
         $cleanedTemplate = preg_replace($pattern, '', $template);
 
         return [
-            'template' => trim((string) $cleanedTemplate),
+            'template' => trim((string)$cleanedTemplate),
             'styles' => $styles,
         ];
     }
@@ -154,7 +154,7 @@ class TemplateScriptParser
         $transformed = preg_replace('/export\s+default\s+/', 'var _export = ', $scriptContent);
 
         // Add return statement at the end
-        $transformed = rtrim((string) $transformed);
+        $transformed = rtrim((string)$transformed);
         if (!str_ends_with($transformed, ';')) {
             $transformed .= ';';
         }
@@ -348,13 +348,13 @@ class TemplateScriptParser
         $type = method_exists($keyNode, 'getType') ? $keyNode->getType() : null;
 
         if ($type === 'Identifier' && method_exists($keyNode, 'getName')) {
-            return (string) $keyNode->getName();
+            return (string)$keyNode->getName();
         }
 
         if ($type === 'Literal' && method_exists($keyNode, 'getValue')) {
             $value = $keyNode->getValue();
 
-            return is_string($value) ? $value : (string) $value;
+            return is_string($value) ? $value : (string)$value;
         }
 
         throw new FlowException('Client script export uses an unsupported property name');

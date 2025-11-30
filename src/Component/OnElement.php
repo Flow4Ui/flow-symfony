@@ -80,16 +80,10 @@ class OnElement extends Element
     public function render(?Context $context = null): string
     {
         $handlers = [];
-        $context = $context->addScope(['$args']);
+        $contextWithArgs = $context->addScope(['$args']);
         foreach ($this->handlers as $handler) {
-            $isAsync = '';
-            $context = $context->withIdentifierHandler(function ($identify) use (&$isAsync) {
-                if ($identify === 'await') {
-                    $isAsync = 'async';
-                }
-                return $identify;
-            });
-            $eventFunc = $handler['fn']->render($context);
+            $isAsync = $context->isAsyncExpression($handler['fn']->expression) ? 'async' : '';
+            $eventFunc = $handler['fn']->render($contextWithArgs);
 
             if ($handler['fn']->isFnHandler) {
                 $jsHandler = sprintf('%s.bind(this)', $eventFunc);

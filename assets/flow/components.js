@@ -121,7 +121,7 @@ export function createFlow(flowOptions = {}) {
         ...flowOptions
     } : window.FlowOptions;
     return {
-        install(app, options) {
+        install(app) {
             let bridge = new Bridge(app);
             let promise = null;
 
@@ -205,7 +205,7 @@ class Batch {
         }
 
         if (awaitForChanges) {
-            promise = this.appendPromise(response => state);
+            promise = this.appendPromise(() => state);
         }
         return promise
     }
@@ -717,7 +717,6 @@ export class Bridge {
         }
 
         const render = typeof component.render === 'function' ? component.render : new Function('h', 'c', 'wm', 'wd', 'rc', component.render);
-        const storage = null;
         const self = this;
 
 

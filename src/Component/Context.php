@@ -7,6 +7,7 @@ use Flow\Service\Registry;
 use Peast\Peast;
 use Peast\Syntax\Node\AssignmentPattern;
 use Peast\Syntax\Node\ArrayPattern;
+use Peast\Syntax\Node\AwaitExpression;
 use Peast\Syntax\Node\ArrowFunctionExpression;
 use Peast\Syntax\Node\CatchClause;
 use Peast\Syntax\Node\ExportSpecifier;
@@ -84,6 +85,18 @@ class Context
      * @var callable|null
      */
     protected $identifierHandler = null;
+    /**
+     * @var array<string, array{0: SyntaxNode|null, 1: int}>
+     */
+    protected array $astCache = [];
+    /**
+     * @var array<string, string>
+     */
+    protected array $parsedExpressionCache = [];
+    /**
+     * @var array<string, bool>
+     */
+    protected array $asyncExpressionCache = [];
 
     public function __construct(
         public readonly Registry|null $registry = null,
@@ -101,15 +114,24 @@ class Context
      */
     public function parseExpression(string $expression): string
     {
+        if (array_key_exists($expression, $this->parsedExpressionCache)) {
+            return $this->parsedExpressionCache[$expression];
+        }
+
         if (trim($expression) === '') {
+            $this->parsedExpressionCache[$expression] = $expression;
             return $expression;
         }
 
         try {
-            return $this->parseExpressionWithPeast($expression);
+            $parsed = $this->parseExpressionWithPeast($expression);
         } catch (Throwable) {
-            return $this->legacyParseExpression($expression);
+            $parsed = $this->legacyParseExpression($expression);
         }
+
+        $this->parsedExpressionCache[$expression] = $parsed;
+
+        return $parsed;
     }
 
     /**
@@ -117,6 +139,10 @@ class Context
      */
     private function createExpressionAst(string $expression): array
     {
+        if (array_key_exists($expression, $this->astCache)) {
+            return $this->astCache[$expression];
+        }
+
         $wrapped = sprintf('(%s)', $expression);
         $program = Peast::latest($wrapped, [
             'sourceType' => Peast::SOURCE_TYPE_MODULE,
@@ -124,12 +150,12 @@ class Context
 
         $body = $program->getBody();
         if (empty($body)) {
-            return [null, 0];
+            return $this->astCache[$expression] = [null, 0];
         }
 
         $statement = $body[0];
         if (!method_exists($statement, 'getExpression')) {
-            return [null, 0];
+            return $this->astCache[$expression] = [null, 0];
         }
 
         $node = $statement->getExpression();
@@ -137,7 +163,61 @@ class Context
             $node = $node->getExpression();
         }
 
-        return [$node, 1];
+        return $this->astCache[$expression] = [$node, 1];
+    }
+
+    public function isAsyncExpression(string $expression): bool
+    {
+        if (array_key_exists($expression, $this->asyncExpressionCache)) {
+            return $this->asyncExpressionCache[$expression];
+        }
+
+        if (trim($expression) === '') {
+            return $this->asyncExpressionCache[$expression] = false;
+        }
+
+        try {
+            [$ast] = $this->createExpressionAst($expression);
+        } catch (Throwable) {
+            return $this->asyncExpressionCache[$expression] = $this->legacyIsAsyncExpression($expression);
+        }
+
+        if ($ast === null) {
+            return $this->asyncExpressionCache[$expression] = $this->legacyIsAsyncExpression($expression);
+        }
+
+        return $this->asyncExpressionCache[$expression] = $this->expressionContainsAwait($ast);
+    }
+
+    private function expressionContainsAwait(SyntaxNode $node): bool
+    {
+        if ($node instanceof AwaitExpression) {
+            return true;
+        }
+
+        foreach (Utils::getNodeProperties($node, true) as $prop) {
+            $child = $node->{$prop['getter']}();
+            if ($child === null) {
+                continue;
+            }
+
+            if (is_array($child)) {
+                foreach ($child as $childNode) {
+                    if ($childNode instanceof SyntaxNode && $this->expressionContainsAwait($childNode)) {
+                        return true;
+                    }
+                }
+            } elseif ($child instanceof SyntaxNode && $this->expressionContainsAwait($child)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function legacyIsAsyncExpression(string $expression): bool
+    {
+        return preg_match('/(^|\\W)await\\b/', $expression) === 1;
     }
 
     private function parseExpressionWithPeast(string $expression): string
