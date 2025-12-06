@@ -76,6 +76,10 @@ class Manager implements ServiceSubscriberInterface
     protected array $componentAuthorization = [];
     protected array $accessDeniedComponents = [];
     protected mixed $redirectTarget = null;
+    /**
+     * @var array<string, array{hash: string, element: string, script: string|null, styles: array}>
+     */
+    protected static array $compiledTemplateCache = [];
 
 
     public function __construct(
@@ -653,28 +657,28 @@ class Manager implements ServiceSubscriberInterface
             return ['render' => '', 'script' => null, 'styles' => []];
         }
 
-        // 2) If caching disabled, compile fresh each time:
+        $templateHash = md5($template);
+
+        // 2) If caching disabled, compile fresh each time but reuse in-memory template cache
         if (!$this->cacheEnabled) {
-            $compiler = new Compiler();
-            $element = $compiler->compile($template, $flowContext);
+            $compiled = $this->getCompiledTemplate($template, $templateHash, $flowContext);
+
             return [
-                'render' => $element->render($flowContext),
-                'script' => $compiler->getScriptContent(),
-                'styles' => $compiler->getStyles(),
+                'render' => $compiled['element']->render($flowContext),
+                'script' => $compiled['script'],
+                'styles' => $compiled['styles'],
             ];
         }
 
-        // 3) Build a stable filename in the Flow cache directory
-        $hash = md5($template);
+        // 3) Build a stable filename in the Flow cache directory for the rendered output
         $nameHash = md5($className);
         $fileName = sprintf('%s_%s.php', $definition->name, $nameHash);
         // e.g. MyComponent_2f18cd4ee.php
 
         $filePath = rtrim($this->cacheDirectory, '/\\') . DIRECTORY_SEPARATOR . $fileName;
 
-        // 4) Check if the file is already present
+        // 4) Check if the rendered output file is already present
         if (is_file($filePath)) {
-            // The file returns an Element or something similar
             $cached = require $filePath;
 
             if (is_array($cached)) {
@@ -689,22 +693,120 @@ class Manager implements ServiceSubscriberInterface
                     $oldHash = $cached[2] ?? null;
                 }
 
-                if ($oldHash === $hash) {
+                if ($oldHash === $templateHash) {
                     return ['render' => $rendered, 'script' => $scriptContent, 'styles' => $cachedStyles];
                 }
             }
             // If it's not valid or something changed, fallback to recompile
         }
 
-        // 5) We do not have a valid cached version -> compile from scratch
+        // 5) We do not have a valid cached version -> compile (with shared template cache)
+        $compiled = $this->getCompiledTemplate($template, $templateHash, $flowContext);
+        $rendered = $compiled['element']->render($flowContext);
+
+        $this->storeComponentRenderCache($filePath, $definition, $rendered, $compiled['script'], $compiled['styles'], $templateHash);
+
+        return ['render' => $rendered, 'script' => $compiled['script'], 'styles' => $compiled['styles']];
+    }
+
+    /**
+     * @return array{element: \Flow\Component\Element, script: string|null, styles: array}
+     */
+    private function getCompiledTemplate(string $template, string $hash, Context $flowContext): array
+    {
+        if (isset(self::$compiledTemplateCache[$hash])) {
+            return $this->hydrateCompiledTemplate(self::$compiledTemplateCache[$hash]);
+        }
+
+        if ($this->cacheEnabled) {
+            $cached = $this->loadTemplateCacheFromDisk($hash);
+            if ($cached !== null) {
+                self::$compiledTemplateCache[$hash] = $cached;
+                return $this->hydrateCompiledTemplate($cached);
+            }
+        }
+
         $compiler = new Compiler();
         $element = $compiler->compile($template, $flowContext);
-        $rendered = $element->render($flowContext);
         $scriptContent = $compiler->getScriptContent();
         $styles = $compiler->getStyles();
 
-        // 6) Cache it to a .php file
-        // We'll store the serialized Element. Alternatively, build real PHP code.
+        $payload = [
+            'hash' => $hash,
+            'element' => serialize($element),
+            'script' => $scriptContent,
+            'styles' => $styles,
+        ];
+
+        self::$compiledTemplateCache[$hash] = $payload;
+
+        if ($this->cacheEnabled) {
+            $this->storeTemplateCache($payload);
+        }
+
+        return $this->hydrateCompiledTemplate($payload);
+    }
+
+    /**
+     * @param array{hash: string, element: string, script: string|null, styles: array} $cached
+     * @return array{element: \Flow\Component\Element, script: string|null, styles: array}
+     */
+    private function hydrateCompiledTemplate(array $cached): array
+    {
+        return [
+            'element' => unserialize($cached['element']),
+            'script' => $cached['script'] ?? null,
+            'styles' => $cached['styles'] ?? [],
+        ];
+    }
+
+    private function loadTemplateCacheFromDisk(string $hash): ?array
+    {
+        $filePath = $this->getTemplateCachePath($hash);
+        if (!is_file($filePath)) {
+            return null;
+        }
+
+        $cached = require $filePath;
+        if (!is_array($cached)) {
+            return null;
+        }
+
+        if (($cached['hash'] ?? null) !== $hash || !isset($cached['element'])) {
+            return null;
+        }
+
+        return $cached;
+    }
+
+    private function getTemplateCachePath(string $hash): string
+    {
+        return rtrim($this->cacheDirectory, '/\\') . DIRECTORY_SEPARATOR . sprintf('template_%s.php', $hash);
+    }
+
+    /**
+     * @param array{hash: string, element: string, script: string|null, styles: array} $payload
+     */
+    private function storeTemplateCache(array $payload): void
+    {
+        $filePath = $this->getTemplateCachePath($payload['hash']);
+        $export = var_export($payload, true);
+        $phpCode = <<<PHP
+<?php
+
+/**
+ * Auto-generated Flow template cache
+ * Hash: {$payload['hash']}
+ */
+return {$export};
+
+PHP;
+
+        @file_put_contents($filePath, $phpCode);
+    }
+
+    private function storeComponentRenderCache(string $filePath, Component $definition, string $rendered, ?string $scriptContent, array $styles, string $hash): void
+    {
         $serialized = serialize([$rendered, $scriptContent, $styles, $hash]);
         $serializedExport = var_export($serialized, true);
 
@@ -721,8 +823,6 @@ return unserialize($serializedExport);
 PHP;
 
         @file_put_contents($filePath, $phpCode);
-
-        return ['render' => $rendered, 'script' => $scriptContent, 'styles' => $styles];
     }
 
     /**

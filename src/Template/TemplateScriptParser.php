@@ -51,7 +51,8 @@ class TemplateScriptParser
         'beforeRouteEnter',
         'beforeRouteUpdate',
         'beforeRouteLeave',
-        'emits'
+        'emits',
+        'props'
     ];
 
     /**

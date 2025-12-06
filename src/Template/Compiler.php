@@ -52,6 +52,11 @@ class Compiler
 
     private const STYLE_SCOPE_ATTRIBUTE = 'data-flow-scope';
 
+    /**
+     * @var array<string, array{element: string, script: string|null, styles: array, styleScopeId: string|null}>
+     */
+    private static array $compiledTemplateCache = [];
+
     public function __construct()
     {
     }
@@ -61,6 +66,16 @@ class Compiler
      */
     public function compile(string $template, ?Context $context)
     {
+        $cacheKey = md5($template);
+        if (array_key_exists($cacheKey, self::$compiledTemplateCache)) {
+            $cached = self::$compiledTemplateCache[$cacheKey];
+            $this->scriptContent = $cached['script'];
+            $this->styles = $cached['styles'];
+            $this->styleScopeId = $cached['styleScopeId'];
+
+            return unserialize($cached['element']);
+        }
+
         // Extract script tag before preprocessing
         $scriptParser = new TemplateScriptParser();
         $extracted = $scriptParser->extractScript($template);
@@ -82,7 +97,16 @@ class Compiler
             throw new FlowException('Template should have only one root node');
         }
 
-        return $this->compileElement($rootNodes[0], null, $context, true);
+        $element = $this->compileElement($rootNodes[0], null, $context, true);
+
+        self::$compiledTemplateCache[$cacheKey] = [
+            'element' => serialize($element),
+            'script' => $this->scriptContent,
+            'styles' => $this->styles,
+            'styleScopeId' => $this->styleScopeId,
+        ];
+
+        return unserialize(self::$compiledTemplateCache[$cacheKey]['element']);
     }
 
     private function preprocess($template)

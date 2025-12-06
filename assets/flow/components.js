@@ -98,6 +98,54 @@ function wd(component, directives, appDirectives) {
     return withDirectives(component, directives);
 }
 
+function convertArrayPropsToObject(propsArray) {
+    if (!Array.isArray(propsArray)) {
+        return {};
+    }
+    return propsArray.reduce((acc, key) => {
+        if (typeof key === 'string' || typeof key === 'number') {
+            acc[key] = null;
+        }
+        return acc;
+    }, {});
+}
+
+function mergeComponentProps(baseProps, scriptProps) {
+    const hasBase = typeof baseProps !== 'undefined' && baseProps !== null;
+    const hasScript = typeof scriptProps !== 'undefined' && scriptProps !== null;
+
+    if (!hasBase && !hasScript) {
+        return {};
+    }
+    if (!hasScript) {
+        return baseProps;
+    }
+    if (!hasBase) {
+        return scriptProps;
+    }
+
+    const baseIsArray = Array.isArray(baseProps);
+    const scriptIsArray = Array.isArray(scriptProps);
+
+    if (baseIsArray && scriptIsArray) {
+        return Array.from(new Set([...baseProps, ...scriptProps]));
+    }
+
+    if (!baseIsArray && !scriptIsArray && typeof baseProps === 'object' && typeof scriptProps === 'object') {
+        return {...baseProps, ...scriptProps};
+    }
+
+    if (baseIsArray && typeof scriptProps === 'object' && !scriptIsArray) {
+        return {...convertArrayPropsToObject(baseProps), ...scriptProps};
+    }
+
+    if (scriptIsArray && typeof baseProps === 'object' && !baseIsArray) {
+        return {...baseProps, ...convertArrayPropsToObject(scriptProps)};
+    }
+
+    return scriptProps;
+}
+
 window.FlowOptions = window.FlowOptions || {
     definitions: {},
     autoloadComponents: "*",
@@ -746,6 +794,7 @@ export class Bridge {
         // Process clientInit if present
         let clientInitDefinition = {};
         let dataFunction = null;
+        let scriptPropsDefinition = null;
         if (component.clientInit) {
             try {
                 const evalFunc = new Function(component.clientInit);
@@ -768,6 +817,11 @@ export class Bridge {
                 if (typeof exportedObject.data === 'function') {
                     dataFunction = exportedObject.data;
                     delete exportedObject.data;
+                }
+
+                if (Object.prototype.hasOwnProperty.call(exportedObject, 'props')) {
+                    scriptPropsDefinition = exportedObject.props;
+                    delete exportedObject.props;
                 }
 
                 const lifecycleKeys = [
@@ -809,9 +863,10 @@ export class Bridge {
         };
 
         const localDataFunction = dataFunction;
+        const mergedPropsDefinition = mergeComponentProps(component.props, scriptPropsDefinition);
         this.definitions.components[componentKey] = defineComponent({
                 name: componentKey,
-                props: component.props || {},
+                props: mergedPropsDefinition || {},
                 setup(props, context) {
                     const runtimeState = self.useState(component.stateId, {
                         ...component.state,
