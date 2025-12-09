@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flow\Service;
 
 use Flow\Attributes\{Action, Attribute, Component, Property, Router, State, Store, StoreRef};
+use Flow\Enum\{Direction, StateUpdateType};
 use Flow\Exception\FlowException;
 use ReflectionException;
 use function Symfony\Component\String\s;
@@ -25,13 +26,25 @@ class Registry
      */
     protected array $routes = [];
 
+    protected bool $stateCacheEnabled = false;
+    protected ?string $stateCacheDirectory = null;
+
 
     public function __construct(
         protected bool        $routerEnabled = false,
         protected string      $routerMode = 'hash',
         protected string|null $routerBase = null,
+        bool                  $cacheEnabled = false,
+        ?string               $cacheDir = null,
     )
     {
+        $this->stateCacheEnabled = $cacheEnabled;
+        if ($this->stateCacheEnabled && $cacheDir !== null) {
+            $this->stateCacheDirectory = rtrim($cacheDir, '/\\') . DIRECTORY_SEPARATOR . 'states';
+            if (!is_dir($this->stateCacheDirectory)) {
+                @mkdir($this->stateCacheDirectory, 0777, true);
+            }
+        }
     }
 
     /**
@@ -51,6 +64,7 @@ class Registry
      */
     public function defineState(\ReflectionClass $class, ?State $store = null, $isStore = false, ?Component $component = null): void
     {
+
         if ($store === null) {
             $attributes = $class->getAttributes(State::class, \ReflectionAttribute::IS_INSTANCEOF);
             if (!empty($attributes)) {
@@ -65,13 +79,15 @@ class Registry
 
 
         $storeName = empty($store->name) ? $this->genStateName($class, $store) : $store->name;
-        $this->stateDefinitions[$class->getName()] = $store;
-        $this->stateDefinitions[$storeName] = $store;
-        if ($isStore) {
-            $this->storesByName[$storeName] = $store;
-        }
         $store->className = $class->getName();
         $store->name = $storeName;
+
+        $this->registerStateDefinition($class, $store, $isStore);
+
+        if ($this->hydrateStateFromCache($class, $store, $component)) {
+            $this->registerStateDefinition($class, $store, $isStore);
+            return;
+        }
 
         foreach ($class->getProperties() as $property) {
             $this->computeProperty($property, $store, $component);
@@ -85,6 +101,8 @@ class Registry
             $this->computeGetter($method, $store);
         }
 
+        $this->registerStateDefinition($class, $store, $isStore);
+        $this->writeStateDefinitionCache($class, $store, $isStore);
     }
 
     protected function genStateName(\ReflectionClass $class, \ReflectionAttribute|State $store): string
@@ -337,6 +355,270 @@ class Registry
     public function getRouterBase(): ?string
     {
         return $this->routerBase;
+    }
+
+
+    private function hydrateStateFromCache(\ReflectionClass $class, State $store, ?Component $component): bool
+    {
+        if (!$this->stateCacheEnabled || $this->stateCacheDirectory === null) {
+            return false;
+        }
+
+        $cached = $this->getCachedStateDefinition($class);
+        if ($cached === null) {
+            return false;
+        }
+
+        $store->name = $cached['store']['name'] ?? $store->name;
+        $store->properties = [];
+        $store->actions = [];
+
+        foreach ($cached['properties'] ?? [] as $definition) {
+            $property = $this->hydratePropertyFromCache($class, $definition, $component);
+            if ($property !== null) {
+                $store->properties[$property->name] = $property;
+            }
+        }
+
+        foreach ($cached['actions'] ?? [] as $definition) {
+            $action = $this->hydrateActionFromCache($class, $definition);
+            if ($action !== null) {
+                $store->actions[$action->name] = $action;
+            }
+        }
+
+        return true;
+    }
+
+    private function registerStateDefinition(\ReflectionClass $class, State $store, bool $isStore): void
+    {
+        $this->stateDefinitions[$class->getName()] = $store;
+        $this->stateDefinitions[$store->name] = $store;
+        if ($isStore) {
+            $this->storesByName[$store->name] = $store;
+        }
+    }
+
+    private function writeStateDefinitionCache(\ReflectionClass $class, State $store, bool $isStore): void
+    {
+        if (!$this->stateCacheEnabled || $this->stateCacheDirectory === null) {
+            return;
+        }
+
+        $fileName = $class->getFileName();
+        if ($fileName === false) {
+            return;
+        }
+
+        $mtime = @filemtime($fileName);
+        if ($mtime === false) {
+            return;
+        }
+
+        $payload = [
+            'class' => $class->getName(),
+            'file' => $fileName,
+            'mtime' => $mtime,
+            'store' => [
+                'name' => $store->name,
+                'isStore' => $isStore,
+            ],
+            'properties' => [],
+            'actions' => [],
+        ];
+
+        foreach ($store->properties as $property) {
+            $definition = $this->serializePropertyDefinition($property);
+            if ($definition !== null) {
+                $payload['properties'][] = $definition;
+            }
+        }
+
+        foreach ($store->actions as $action) {
+            $definition = $this->serializeActionDefinition($action);
+            if ($definition !== null) {
+                $payload['actions'][] = $definition;
+            }
+        }
+
+        $export = var_export($payload, true);
+        @file_put_contents($this->getStateCacheFile($class), "<?php\nreturn {$export};\n", LOCK_EX);
+    }
+
+    private function getCachedStateDefinition(\ReflectionClass $class): ?array
+    {
+        if (!$this->stateCacheEnabled || $this->stateCacheDirectory === null) {
+            return null;
+        }
+
+        $fileName = $class->getFileName();
+        if ($fileName === false) {
+            return null;
+        }
+
+        $cacheFile = $this->getStateCacheFile($class);
+        if (!is_file($cacheFile)) {
+            return null;
+        }
+
+        $cached = @include $cacheFile;
+        if (!is_array($cached)) {
+            return null;
+        }
+
+        $mtime = @filemtime($fileName);
+        if ($mtime === false || ($cached['mtime'] ?? null) !== $mtime) {
+            return null;
+        }
+
+        return $cached;
+    }
+
+    private function getStateCacheFile(\ReflectionClass $class): string
+    {
+        return $this->stateCacheDirectory . DIRECTORY_SEPARATOR . sprintf('state_%s.php', md5($class->getName()));
+    }
+
+    private function serializePropertyDefinition(Property|StoreRef $property): ?array
+    {
+        $source = $property->reflectionProperty?->getName();
+        if ($source === null) {
+            return null;
+        }
+
+        $definition = [
+            'attribute' => get_class($property),
+            'name' => $property->name,
+            'source' => $source,
+        ];
+
+        if ($property instanceof StoreRef) {
+            $definition['store'] = $property->store;
+            $definition['property'] = $property->property;
+        } else {
+            $definition['direction'] = $property->direction->value;
+        }
+
+        return $definition;
+    }
+
+    private function serializeActionDefinition(Action|Property $action): ?array
+    {
+        $reflection = $action instanceof Action ? $action->reflectionAction : $action->reflectionProperty;
+        if ($reflection === null) {
+            return null;
+        }
+
+        $definition = [
+            'attribute' => get_class($action),
+            'name' => $action->name,
+            'method' => $reflection->getName(),
+            'is_action' => $action instanceof Action,
+        ];
+
+        if ($action instanceof Action) {
+            $definition['output'] = $action->output;
+            $definition['input'] = $action->input;
+            $definition['updateType'] = $action->updateType->name;
+            $definition['roles'] = $action->roles;
+        } else {
+            $definition['direction'] = $action->direction->value;
+        }
+
+        return $definition;
+    }
+
+    private function hydratePropertyFromCache(\ReflectionClass $class, array $definition, ?Component $component): Property|StoreRef|null
+    {
+        $attributeClass = $definition['attribute'] ?? null;
+        $source = $definition['source'] ?? null;
+        if ($attributeClass === null || $source === null) {
+            return null;
+        }
+
+        if (is_a($attributeClass, StoreRef::class, true)) {
+            $property = new StoreRef(
+                $definition['store'] ?? null,
+                $definition['property'] ?? null,
+                $definition['name'] ?? null,
+            );
+        } elseif (is_a($attributeClass, Property::class, true)) {
+            /** @var class-string<Property> $attributeClass */
+            $property = new $attributeClass(
+                $definition['name'] ?? null,
+                $this->resolveDirection($definition['direction'] ?? null)
+            );
+        } else {
+            return null;
+        }
+
+        $property->name = $definition['name'] ?? $property->name;
+        $property->reflectionProperty = $class->getProperty($source);
+
+        if ($component !== null && $property instanceof Attribute && !in_array($property->name, $component->props)) {
+            $component->props[] = $property->name;
+        }
+
+        return $property;
+    }
+
+    private function hydrateActionFromCache(\ReflectionClass $class, array $definition): Action|Property|null
+    {
+        $method = $definition['method'] ?? null;
+        if ($method === null) {
+            return null;
+        }
+
+        if (!empty($definition['is_action'])) {
+            $action = new Action(
+                name: $definition['name'] ?? null,
+                output: $definition['output'] ?? null,
+                input: $definition['input'] ?? null,
+                updateType: $this->resolveUpdateType($definition['updateType'] ?? null),
+                roles: $definition['roles'] ?? null,
+            );
+            $action->reflectionAction = $class->getMethod($method);
+        } else {
+            $attributeClass = $definition['attribute'] ?? Property::class;
+            if (!is_a($attributeClass, Property::class, true)) {
+                $attributeClass = Property::class;
+            }
+            /** @var class-string<Property> $attributeClass */
+            $action = new $attributeClass(
+                $definition['name'] ?? null,
+                $this->resolveDirection($definition['direction'] ?? null)
+            );
+            $action->reflectionProperty = $class->getMethod($method);
+        }
+
+        $action->name = $definition['name'] ?? $action->name;
+
+        return $action;
+    }
+
+    private function resolveDirection(?string $direction): Direction
+    {
+        if ($direction !== null) {
+            $resolved = Direction::tryFrom($direction);
+            if ($resolved !== null) {
+                return $resolved;
+            }
+        }
+
+        return Direction::Booth;
+    }
+
+    private function resolveUpdateType(?string $updateType): StateUpdateType
+    {
+        if ($updateType !== null) {
+            foreach (StateUpdateType::cases() as $case) {
+                if ($case->name === $updateType) {
+                    return $case;
+                }
+            }
+        }
+
+        return StateUpdateType::REPLACE;
     }
 
 }

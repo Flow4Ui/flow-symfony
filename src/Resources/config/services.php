@@ -44,6 +44,8 @@ return function (ContainerConfigurator $configurator) {
             param('router.enabled'),
             param('router.mode'),
             param('router.base'),
+            param('flow.cache.enabled'),
+            param('flow.cache.dir'),
         ])
         ->public()
         ->alias('flow.registry', Registry::class)
