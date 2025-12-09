@@ -140,7 +140,7 @@ class Compiler
     {
         if ($domElement instanceof \DOMText) {
             return new TextElement($domElement->nodeValue);
-        } elseif ($domElement->tagName === '___code') {
+        } elseif ($domElement->tagName === 'flow-expression') {
             return new Expression(base64_decode($domElement->nodeValue));
         }
 

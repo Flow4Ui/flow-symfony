@@ -119,7 +119,7 @@ class Preprocessor
         } elseif ($this->currentByte === '}' && $this->previousByte === '}') {
             $this->setCurrentState(PreprocessorState::Text);
             $expressionCode = $this->getPinnedBytes();
-            $codeElement = sprintf('<___code>%s</___code>', base64_encode(substr($expressionCode, 2, -1)));
+            $codeElement = sprintf('<flow-expression>%s</flow-expression>', base64_encode(substr($expressionCode, 2, -1)));
             $this->position++;
             $this->replacePinnedBytes($codeElement);
             $this->position--;
