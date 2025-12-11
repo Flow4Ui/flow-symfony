@@ -25,13 +25,13 @@ import {
     toDisplayString,
     toRef,
     toRefs,
+    Transition,
+    TransitionGroup,
+    vShow,
     withCtx,
     withDirectives,
     withKeys,
     withModifiers,
-    vShow,
-    Transition,
-    TransitionGroup,
 } from 'vue';
 
 
@@ -151,6 +151,7 @@ window.FlowOptions = window.FlowOptions || {
     autoloadComponents: "*",
     mount: '#flow-container',
     mainComponent: null,
+    endpoint: '/_flow/endpoint',
     security: {
         componentSecurity: false,
         unauthorizedRoute: null,
@@ -171,6 +172,7 @@ export function createFlow(flowOptions = {}) {
     return {
         install(app) {
             let bridge = new Bridge(app);
+            bridge.endpoint = flowOptions.endpoint || bridge.endpoint;
             let promise = null;
 
             app.component('Transition', Transition);
@@ -200,7 +202,7 @@ export function createFlow(flowOptions = {}) {
 
 class Batch {
 
-    url = null;
+    endpoint = null;
 
     callId = 0;
     storeId = 0;
@@ -216,8 +218,8 @@ class Batch {
 
     counter = 0;
 
-    constructor(url, options = {}) {
-        this.url = url;
+    constructor(endpoint, options = {}) {
+        this.endpoint = endpoint;
         this.options = options;
     }
 
@@ -397,7 +399,7 @@ class Batch {
             };
         }
 
-        const response = await fetch(this.url, {
+        const response = await fetch(this.endpoint, {
             method: 'POST',
             headers: {"Content-type": "application/json;charset=UTF-8"},
             //body: JSON.stringify(requestContext, (k, v) => v === null ? '@@@null@@@' : v).replace(JSON.stringify('@@@null@@@'), 'null'),
@@ -502,7 +504,7 @@ function newNumericStringGenerator() {
 }
 
 export class Bridge {
-    url = '/data/store';
+    endpoint = '/_flow/endpoint';
 
     stores = {};
     metadata = {};
@@ -536,7 +538,7 @@ export class Bridge {
         if (!this.batch) {
             options.security = options.security || this.security;
             options.router = options.router || this.$app.config?.globalProperties?.$router;
-            let newBatch = new Batch(this.url, options);
+            let newBatch = new Batch(this.endpoint, options);
             this.batch = newBatch;
             setTimeout(async () => {
                 if (newBatch.counter) await (this.batch === newBatch ? this.executeBatch() : newBatch.execute(this))

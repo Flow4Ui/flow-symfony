@@ -15,7 +15,7 @@ use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
 
 class FlowExtension extends Extension
 {
-    public function getConfiguration(array $config, ContainerBuilder $container)
+    public function getConfiguration(array $config, ContainerBuilder $container): ?\Symfony\Component\Config\Definition\ConfigurationInterface
     {
         return new FlowConfiguration();
     }

@@ -14,14 +14,11 @@ use Flow\Contract\{ComponentBuilderInterface,
     HasUpdateState,
     MethodType,
     SecurityInterface,
-    Transport
-};
+    Transport};
 use Flow\Enum\Direction;
 use Flow\Event\{AfterActionInvokeEvent, BeforeActionInvokeEvent, PostActionEvent, PreActionEvent};
 use Flow\Exception\FlowException;
-use Flow\Security\RoleBasedSecurity;
 use Flow\Template\Compiler;
-use Flow\Transport\AjaxJsonTransport;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
@@ -35,8 +32,7 @@ use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\Routing\RouterInterface;
 use Symfony\Component\Security\Core\{Authentication\Token\Storage\TokenStorageInterface,
     Authorization\AuthorizationCheckerInterface,
-    Exception\AccessDeniedException
-};
+    Exception\AccessDeniedException};
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 use Symfony\Component\Serializer\Context\Normalizer\ObjectNormalizerContextBuilder;
 use Symfony\Component\Serializer\Exception\ExceptionInterface;
@@ -48,23 +44,23 @@ use Twig\Environment;
 
 class Manager implements ServiceSubscriberInterface
 {
+    /**
+     * @var array<string, array{hash: string, element: string, script: string|null, styles: array}>
+     */
+    protected static array $compiledTemplateCache = [];
     protected Registry $registry;
     protected NormalizerInterface $normalizer;
     protected DenormalizerInterface $denormalizer;
     protected ContainerInterface|null $container = null;
-
     protected array $stateInstances = [];
     protected array $storeInstances = [];
     protected array $componentInstances = [];
-
     protected Environment $environment;
     protected Request|null $request = null;
     protected Transport $transport;
     protected SecurityInterface|null $security = null;
     protected EventDispatcherInterface|null $eventDispatcher = null;
-
     protected CacheItemPoolInterface $adapter;
-
     /**
      * Whether or not to enable template caching
      */
@@ -76,11 +72,6 @@ class Manager implements ServiceSubscriberInterface
     protected array $componentAuthorization = [];
     protected array $accessDeniedComponents = [];
     protected mixed $redirectTarget = null;
-    /**
-     * @var array<string, array{hash: string, element: string, script: string|null, styles: array}>
-     */
-    protected static array $compiledTemplateCache = [];
-
 
     public function __construct(
         #[TaggedIterator('flow.state')] iterable     $stores,
@@ -149,76 +140,6 @@ class Manager implements ServiceSubscriberInterface
         $this->container = $container;
 
         return $previous;
-    }
-
-    protected function isComponentAllowed(?Component $component): bool
-    {
-        if (!$this->componentSecurityEnabled || $this->security === null || $component === null) {
-            return true;
-        }
-
-        if (!array_key_exists($component->name, $this->componentAuthorization)) {
-            $isAllowed = $this->security->isComponentAllowed($component);
-            $this->componentAuthorization[$component->name] = $isAllowed;
-
-            if (!$isAllowed) {
-                $this->accessDeniedComponents[] = $component->name;
-                $this->computeRedirectTarget($component);
-            }
-        }
-
-        return $this->componentAuthorization[$component->name];
-    }
-
-    protected function isStateAuthorized(State $stateDefinition): bool
-    {
-        $component = $this->registry->getComponentByState($stateDefinition);
-        return $this->isComponentAllowed($component);
-    }
-
-    protected function computeRedirectTarget(Component $component): void
-    {
-        // Only compute redirect for components that want redirect behavior (default)
-        if ($component->onDenied !== 'render') {
-            $this->redirectTarget ??= $this->isAuthenticated()
-                ? ($this->unauthorizedRoute ?? $this->loginRoute)
-                : ($this->loginRoute ?? $this->unauthorizedRoute);
-        }
-    }
-
-    protected function isAuthenticated(): bool
-    {
-        try {
-            $checker = $this->container?->get('security.authorization_checker');
-            return $checker?->isGranted('IS_AUTHENTICATED_REMEMBERED') ?? false;
-        } catch (\Throwable) {
-            return false;
-        }
-    }
-
-    protected function isRouteAllowed(Router $router, ?Component $component = null): bool
-    {
-        if ($component === null) {
-            return true;
-        }
-
-        $isAllowed = $this->isComponentAllowed($component);
-        if ($isAllowed) {
-            return true;
-        }
-
-        return $component->onDenied === 'render';
-    }
-
-    protected function getSecurityMetadata(): array
-    {
-        return [
-            'componentSecurity' => $this->componentSecurityEnabled,
-            'unauthorizedRoute' => $this->unauthorizedRoute,
-            'loginRoute' => $this->loginRoute,
-            'accessDeniedComponents' => array_values(array_unique($this->accessDeniedComponents)),
-            'redirect' => $this->redirectTarget,
-        ];
     }
 
     /**
@@ -392,6 +313,45 @@ class Manager implements ServiceSubscriberInterface
         }
     }
 
+    protected function isComponentAllowed(?Component $component): bool
+    {
+        if (!$this->componentSecurityEnabled || $this->security === null || $component === null) {
+            return true;
+        }
+
+        if (!array_key_exists($component->name, $this->componentAuthorization)) {
+            $isAllowed = $this->security->isComponentAllowed($component);
+            $this->componentAuthorization[$component->name] = $isAllowed;
+
+            if (!$isAllowed) {
+                $this->accessDeniedComponents[] = $component->name;
+                $this->computeRedirectTarget($component);
+            }
+        }
+
+        return $this->componentAuthorization[$component->name];
+    }
+
+    protected function computeRedirectTarget(Component $component): void
+    {
+        // Only compute redirect for components that want redirect behavior (default)
+        if ($component->onDenied !== 'render') {
+            $this->redirectTarget ??= $this->isAuthenticated()
+                ? ($this->unauthorizedRoute ?? $this->loginRoute)
+                : ($this->loginRoute ?? $this->unauthorizedRoute);
+        }
+    }
+
+    protected function isAuthenticated(): bool
+    {
+        try {
+            $checker = $this->container?->get('security.authorization_checker');
+            return $checker?->isGranted('IS_AUTHENTICATED_REMEMBERED') ?? false;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     /**
      * @param State $stateDefinition
      * @param array<string,mixed> $inputState
@@ -444,6 +404,80 @@ class Manager implements ServiceSubscriberInterface
     }
 
     /**
+     * @param Request $request
+     * @param array $instances
+     * @return void
+     */
+    public function invokePreactionInstances(Request $request, array $instances): void
+    {
+        // Dispatch pre-action event if event dispatcher is available
+        if ($this->eventDispatcher) {
+            $event = new PreActionEvent($this, $request, $instances);
+            $this->eventDispatcher->dispatch($event, 'flow.pre_action');
+        }
+
+        // Process legacy pre-action hooks
+        foreach ($this->storeInstances as $instance) {
+            $stateDefinition = $this->registry->getStateDefinition(get_class($instance));
+            if ($stateDefinition && !$this->isStateAuthorized($stateDefinition)) {
+                continue;
+            }
+            if ($instance instanceof HasPreAction) {
+                $instance->preAction($request);
+            }
+        }
+        foreach ($instances as $instance) {
+            $stateDefinition = $this->registry->getStateDefinition(get_class($instance));
+            if ($stateDefinition && !$this->isStateAuthorized($stateDefinition)) {
+                continue;
+            }
+            if ($instance instanceof HasPreAction) {
+                $instance->preAction($request);
+            }
+        }
+    }
+
+    protected function isStateAuthorized(State $stateDefinition): bool
+    {
+        $component = $this->registry->getComponentByState($stateDefinition);
+        return $this->isComponentAllowed($component);
+    }
+
+    /**
+     * @param Request $request
+     * @param array $instances
+     * @return void
+     */
+    public function invokePostActionInstances(Request $request, array $instances): void
+    {
+        // Process legacy post-action hooks
+        foreach ($this->storeInstances as $instance) {
+            $stateDefinition = $this->registry->getStateDefinition(get_class($instance));
+            if ($stateDefinition && !$this->isStateAuthorized($stateDefinition)) {
+                continue;
+            }
+            if ($instance instanceof HasPostAction) {
+                $instance->postAction($request);
+            }
+        }
+        foreach ($instances as $instance) {
+            $stateDefinition = $this->registry->getStateDefinition(get_class($instance));
+            if ($stateDefinition && !$this->isStateAuthorized($stateDefinition)) {
+                continue;
+            }
+            if ($instance instanceof HasPostAction) {
+                $instance->postAction($request);
+            }
+        }
+
+        // Dispatch post-action event if event dispatcher is available
+        if ($this->eventDispatcher) {
+            $event = new PostActionEvent($this, $request, $instances);
+            $this->eventDispatcher->dispatch($event, 'flow.post_action');
+        }
+    }
+
+    /**
      * @param State $stateDefination
      * @param object $object
      * @param mixed $stateUpdate
@@ -490,10 +524,15 @@ class Manager implements ServiceSubscriberInterface
         return $stateUpdate;
     }
 
-    protected function getAuthorizedRoutes(): array
+    protected function getSecurityMetadata(): array
     {
-        // Keep routes so client-side router can resolve navigation; authorization is handled via component checks.
-        return $this->registry->getRoutes();
+        return [
+            'componentSecurity' => $this->componentSecurityEnabled,
+            'unauthorizedRoute' => $this->unauthorizedRoute,
+            'loginRoute' => $this->loginRoute,
+            'accessDeniedComponents' => array_values(array_unique($this->accessDeniedComponents)),
+            'redirect' => $this->redirectTarget,
+        ];
     }
 
     public function compileJsFlowOptions($options = []): string
@@ -559,6 +598,10 @@ class Manager implements ServiceSubscriberInterface
             ],
             'security' => $this->getSecurityMetadata(),
         ];
+
+        if (!empty($options['endpoint'])) {
+            $flowOptions['endpoint'] = $options['endpoint'];
+        }
 
 
         $jsObject = json_encode(
@@ -861,6 +904,26 @@ PHP;
         return $storesDefinitions;
     }
 
+    protected function getActionsMethod(State|Store $storeDefinition, mixed $stateInstance, Context $context)
+    {
+        $methods = [];
+
+        if ($stateInstance instanceof HasClientSideMethods) {
+            $methods = $stateInstance
+                ->getClientSideMethods()
+                ->getMethods($context, fn($method) => $method['methodType'] === MethodType::Method);
+        }
+
+        foreach ($storeDefinition->actions as $action) {
+            $method = $action->name;
+            $methods[$method] = [
+                'params' => [],
+                'func' => sprintf('return this.invoke.call(this,"%s",Array.prototype.slice.call(arguments));', $method),
+            ];
+        }
+        return $methods;
+    }
+
     /**
      * @param array $requestedStates
      * @return array
@@ -904,72 +967,10 @@ PHP;
         return $statesDefinitions;
     }
 
-    /**
-     * @param Request $request
-     * @param array $instances
-     * @return void
-     */
-    public function invokePreactionInstances(Request $request, array $instances): void
+    protected function getAuthorizedRoutes(): array
     {
-        // Dispatch pre-action event if event dispatcher is available
-        if ($this->eventDispatcher) {
-            $event = new PreActionEvent($this, $request, $instances);
-            $this->eventDispatcher->dispatch($event, 'flow.pre_action');
-        }
-
-        // Process legacy pre-action hooks
-        foreach ($this->storeInstances as $instance) {
-            $stateDefinition = $this->registry->getStateDefinition(get_class($instance));
-            if ($stateDefinition && !$this->isStateAuthorized($stateDefinition)) {
-                continue;
-            }
-            if ($instance instanceof HasPreAction) {
-                $instance->preAction($request);
-            }
-        }
-        foreach ($instances as $instance) {
-            $stateDefinition = $this->registry->getStateDefinition(get_class($instance));
-            if ($stateDefinition && !$this->isStateAuthorized($stateDefinition)) {
-                continue;
-            }
-            if ($instance instanceof HasPreAction) {
-                $instance->preAction($request);
-            }
-        }
-    }
-
-    /**
-     * @param Request $request
-     * @param array $instances
-     * @return void
-     */
-    public function invokePostActionInstances(Request $request, array $instances): void
-    {
-        // Process legacy post-action hooks
-        foreach ($this->storeInstances as $instance) {
-            $stateDefinition = $this->registry->getStateDefinition(get_class($instance));
-            if ($stateDefinition && !$this->isStateAuthorized($stateDefinition)) {
-                continue;
-            }
-            if ($instance instanceof HasPostAction) {
-                $instance->postAction($request);
-            }
-        }
-        foreach ($instances as $instance) {
-            $stateDefinition = $this->registry->getStateDefinition(get_class($instance));
-            if ($stateDefinition && !$this->isStateAuthorized($stateDefinition)) {
-                continue;
-            }
-            if ($instance instanceof HasPostAction) {
-                $instance->postAction($request);
-            }
-        }
-
-        // Dispatch post-action event if event dispatcher is available
-        if ($this->eventDispatcher) {
-            $event = new PostActionEvent($this, $request, $instances);
-            $this->eventDispatcher->dispatch($event, 'flow.post_action');
-        }
+        // Keep routes so client-side router can resolve navigation; authorization is handled via component checks.
+        return $this->registry->getRoutes();
     }
 
     public function warmUpComponent(Component $definition, string $className): void
@@ -978,6 +979,20 @@ PHP;
             $context = new Context($this->registry, $definition);
             $this->compileAndRenderFlowTemplate($definition, $context, $className);
         }
+    }
+
+    protected function isRouteAllowed(Router $router, ?Component $component = null): bool
+    {
+        if ($component === null) {
+            return true;
+        }
+
+        $isAllowed = $this->isComponentAllowed($component);
+        if ($isAllowed) {
+            return true;
+        }
+
+        return $component->onDenied === 'render';
     }
 
     /**
@@ -1021,25 +1036,5 @@ PHP;
         }
 
         return new JsonResponse($data, $status, $headers);
-    }
-
-    protected function getActionsMethod(State|Store $storeDefinition, mixed $stateInstance, Context $context)
-    {
-        $methods = [];
-
-        if ($stateInstance instanceof HasClientSideMethods) {
-            $methods = $stateInstance
-                ->getClientSideMethods()
-                ->getMethods($context, fn($method) => $method['methodType'] === MethodType::Method);
-        }
-
-        foreach ($storeDefinition->actions as $action) {
-            $method = $action->name;
-            $methods[$method] = [
-                'params' => [],
-                'func' => sprintf('return this.invoke.call(this,"%s",Array.prototype.slice.call(arguments));', $method),
-            ];
-        }
-        return $methods;
     }
 }

@@ -3,7 +3,7 @@
   "type": "symfony-bundle",
   "license": "MIT",
   "description": "A Symfony bundle for defining Vue components with PHP classes and managing state on both client and server",
-  "version": "v0.1.6",
+  "version": "v0.2.0",
   "require": {
     "php": ">=8.1",
     "ext-dom": "*",
@@ -39,7 +39,7 @@
   "prefer-stable": true,
   "extra": {
     "branch-alias": {
-      "dev-main": "v0.1.6-dev"
+      "dev-main": "v0.2.0-dev"
     }
   }
 }
