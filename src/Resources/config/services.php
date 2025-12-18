@@ -5,7 +5,7 @@ use Flow\Command\InstallFlowAssetsCommand;
 use Flow\Contract\SecurityInterface;
 use Flow\Contract\Transport;
 use Flow\Security\RoleBasedSecurity;
-use Flow\Service\{FlowComponentCacheWarmer, FlowTwigExtension, Manager, Registry};
+use Flow\Service\{FlowComponentCacheWarmer, FlowTwigExtension, Manager, Registry, SsrRenderer};
 use Flow\Transport\AjaxJsonTransport;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use function Symfony\Component\DependencyInjection\Loader\Configurator\{param, service};
@@ -57,6 +57,8 @@ return function (ContainerConfigurator $configurator) {
         ->arg('$componentSecurityEnabled', param('flow.security.component_enabled'))
         ->arg('$unauthorizedRoute', param('flow.security.unauthorized_route'))
         ->arg('$loginRoute', param('flow.security.login_route'))
+        ->arg('$ssrRenderer', service(SsrRenderer::class))
+        ->arg('$ssrEnabled', param('flow.ssr.enabled'))
         ->public();
 
 
@@ -68,6 +70,11 @@ return function (ContainerConfigurator $configurator) {
     $services->set(FlowComponentCacheWarmer::class)
         ->tag('kernel.cache_warmer');
     $services->set(FlowTwigExtension::class);
+
+    $services->set(SsrRenderer::class)
+        ->arg('$projectDir', param('kernel.project_dir'))
+        ->arg('$nodeBinary', param('flow.ssr.node_binary'))
+        ->arg('$enabled', param('flow.ssr.enabled'));
 
     $services->set(InstallFlowAssetsCommand::class)
         ->arg('$projectDir', param('kernel.project_dir'))

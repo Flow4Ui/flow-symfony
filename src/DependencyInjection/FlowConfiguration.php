@@ -49,6 +49,13 @@ class FlowConfiguration implements ConfigurationInterface
                         ->end()
                     ->end()
                 ->end()
+                ->arrayNode('ssr')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->booleanNode('enabled')->defaultFalse()->end()
+                        ->scalarNode('node_binary')->defaultValue('node')->end()
+                    ->end()
+                ->end()
             ->end();
 
         return $treeBuilder;

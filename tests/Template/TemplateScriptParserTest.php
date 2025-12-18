@@ -39,7 +39,7 @@ HTML;
         $this->assertArrayHasKey('script', $result);
         $this->assertArrayHasKey('styles', $result);
         $this->assertStringNotContainsString('<script>', $result['template']);
-        $this->assertStringContainsString('export default', $result['script']);
+        $this->assertStringContainsString('return _export', $result['script']);
         $this->assertCount(0, $result['styles']);
     }
 

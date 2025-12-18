@@ -75,5 +75,7 @@ class FlowExtension extends Extension
         $container->setParameter('flow.security.component_enabled', $config['security']['component_security']);
         $container->setParameter('flow.security.unauthorized_route', $config['security']['unauthorized_route']);
         $container->setParameter('flow.security.login_route', $config['security']['login_route']);
+        $container->setParameter('flow.ssr.enabled', $config['ssr']['enabled']);
+        $container->setParameter('flow.ssr.node_binary', $config['ssr']['node_binary']);
     }
 }

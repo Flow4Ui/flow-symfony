@@ -1,5 +1,5 @@
-import {createFlow} from "./components";
-import {createFlowRouter} from "./router";
+import {createFlow} from "./components.js";
+import {createFlowRouter} from "./router.js";
 
 export {
     createFlow,
