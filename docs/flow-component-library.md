@@ -268,6 +268,8 @@ php bin/console flow:install-assets assets --force
 
 The command checks for Encore, Vue, and Vue Router, optionally installs missing dependencies, and copies the Flow library files into your asset tree while printing follow-up build steps.【F:src/Command/InstallFlowAssetsCommand.php†L6-L134】
 
+When server-side rendering is enabled, make sure your build also ships the Vue server renderer bundle so SSR HTML can stream scoped styles immediately. The SSR entrypoint lives under `assets/flow/index.js` and depends on `@vue/server-renderer`; run `yarn build` (or the equivalent Encore production build) after `flow:install-assets` so the generated `flow-main.*.js` bundle is available to `SsrRenderer`.【F:src/Service/SsrRenderer.php†L8-L88】【F:package.json†L1-L21】
+
 ## Rendering Flow components
 
 Once a component and its state are registered, expose an endpoint that delegates to the Flow manager. The README example below renders a Todo list component by injecting the manager and forwarding the HTTP request.【F:src/README.md†L23-L83】

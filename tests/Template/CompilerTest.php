@@ -33,6 +33,8 @@ HTML;
         $this->assertTrue($style['scoped']);
         $this->assertNotEmpty($style['scopeId']);
         $this->assertStringContainsString('[data-flow-scope="' . $style['scopeId'] . '"] .wrapper', $style['content']);
+        $this->assertStringContainsString('data-flow-style-scope="' . $style['scopeId'] . '"', $style['html']);
+        $this->assertStringContainsString('<style', $style['html']);
         $this->assertInstanceOf(FragmentElement::class, $element);
 
         $target = null;
@@ -47,6 +49,26 @@ HTML;
         $this->assertArrayHasKey('data-flow-scope', $target->props);
         $this->assertSame($style['scopeId'], $target->props['data-flow-scope']);
         $this->assertArrayNotHasKey('scoped', $style['attributes']);
+    }
+
+    public function testCompilerRendersHeadLinkForExternalStyles(): void
+    {
+        $template = <<<HTML
+<div></div>
+<style href="/assets/theme.css"></style>
+HTML;
+
+        $compiler = new Compiler();
+        $compiler->compile($template, new Context());
+
+        $styles = $compiler->getStyles();
+        $this->assertCount(1, $styles);
+        $style = $styles[0];
+
+        $this->assertSame('/assets/theme.css', $style['attributes']['href']);
+        $this->assertStringStartsWith('<link', $style['html']);
+        $this->assertStringContainsString('href="/assets/theme.css"', $style['html']);
+        $this->assertStringContainsString('rel="stylesheet"', $style['html']);
     }
 
     public function testScopedStylesRequireHtmlRoot(): void
