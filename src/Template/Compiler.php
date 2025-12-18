@@ -126,7 +126,7 @@ class Compiler
     }
 
     /**
-     * @return array<int, array{content: string, scoped: bool, attributes: array<string, string>, scopeId: string|null, hash: string}>
+     * @return array<int, array{content: string, scoped: bool, attributes: array<string, string>, scopeId: string|null, hash: string, html: string}>
      */
     public function getStyles(): array
     {
@@ -447,14 +447,72 @@ class Compiler
 
             $hash = substr(sha1($content), 0, 12);
 
-            $this->styles[] = [
+            $styleDefinition = [
                 'content' => $content,
                 'scoped' => $scoped,
                 'attributes' => $attributes,
                 'scopeId' => $scoped ? $this->getStyleScopeId() : null,
                 'hash' => $hash,
             ];
+
+            $this->styles[] = [
+                ...$styleDefinition,
+                'html' => $this->renderStyleHtml($styleDefinition),
+            ];
         }
+    }
+
+    /**
+     * @param array{content: string, scoped: bool, attributes: array<string, string>, scopeId: string|null, hash: string} $style
+     */
+    private function renderStyleHtml(array $style): string
+    {
+        $attributes = $style['attributes'];
+
+        if ($style['scopeId']) {
+            $attributes['data-flow-style-scope'] = $style['scopeId'];
+        }
+
+        if (isset($attributes['src']) || isset($attributes['href'])) {
+            $href = $attributes['href'] ?? $attributes['src'];
+            unset($attributes['src']);
+            $attributes['href'] = $href;
+            $attributes['rel'] ??= 'stylesheet';
+
+            $attributeString = $this->renderHtmlAttributes($attributes);
+            $attributeString = $attributeString ? ' ' . $attributeString : '';
+
+            return sprintf('<link%s>', $attributeString);
+        }
+
+        $attributeString = $this->renderHtmlAttributes($attributes);
+        $attributeString = $attributeString ? ' ' . $attributeString : '';
+
+        return sprintf(
+            '<style%s>%s</style>',
+            $attributeString,
+            $style['content']
+        );
+    }
+
+    /**
+     * @param array<string, string> $attributes
+     */
+    private function renderHtmlAttributes(array $attributes): string
+    {
+        $buffer = [];
+
+        foreach ($attributes as $name => $value) {
+            $name = htmlspecialchars($name, ENT_QUOTES);
+            if ($value === '') {
+                $buffer[] = $name;
+                continue;
+            }
+
+            $buffer[] = sprintf('%s="%s"', $name, htmlspecialchars($value, ENT_QUOTES));
+        }
+
+        return implode(' ', $buffer);
     }
 
     private function hasScopedStyles(): bool
