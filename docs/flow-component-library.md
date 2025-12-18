@@ -252,7 +252,7 @@ The manager dispatches Symfony events before and after every request as well as 
 
 ### Caching and warmup
 
-When caching is enabled, compiled templates are saved under the Flow cache directory. Subsequent renders reuse the cached PHP payload unless the template hash changes. The `FlowComponentCacheWarmer` precompiles every registered component during Symfony's `cache:warmup` command so production deployments start with warm caches.【F:src/Service/Manager.php†L420-L535】【F:src/Service/FlowComponentCacheWarmer.php†L9-L59】
+When caching is enabled, compiled templates are saved under the Flow cache directory. Subsequent renders reuse the cached PHP payload unless the template hash changes. SSR runs also persist the rendered HTML fragment next to the compiled template cache so repeat requests reuse the same markup without invoking the Node renderer. The `FlowComponentCacheWarmer` precompiles every registered component during Symfony's `cache:warmup` command so production deployments start with warm caches.【F:src/Service/Manager.php†L420-L535】【F:src/Service/Manager.php†L313-L367】【F:src/Service/FlowComponentCacheWarmer.php†L9-L59】
 
 ### Twig helpers
 
@@ -272,7 +272,7 @@ When server-side rendering is enabled, make sure your build also ships the Vue s
 
 ## Rendering Flow components
 
-Once a component and its state are registered, expose an endpoint that delegates to the Flow manager. The README example below renders a Todo list component by injecting the manager and forwarding the HTTP request.【F:src/README.md†L23-L83】
+Once a component and its state are registered, expose an endpoint that delegates to the Flow manager. The bundle now ships a dedicated controller you can import via `@FlowFlowBundle/Resources/config/routes.php`, which registers `/_flow/endpoint` for AJAX updates and `/_flow/ssr/{component}` for initial hydration. The SSR route accepts query parameters such as `?component=counter-dashboard&ssr=false` to toggle between client-only boot and a pre-rendered HTML fragment per route or component. The README example below renders a Todo list component by injecting the manager and forwarding the HTTP request if you prefer wiring your own controller.【F:src/Resources/config/routes.php†L4-L15】【F:src/Controller/FlowController.php†L11-L60】【F:src/README.md†L23-L83】
 
 ```php
 #[Route('/flow/handle', name: 'flow_handle')]
