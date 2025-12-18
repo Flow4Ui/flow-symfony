@@ -48,6 +48,10 @@ class Manager implements ServiceSubscriberInterface
      * @var array<string, array{hash: string, element: string, script: string|null, styles: array}>
      */
     protected static array $compiledTemplateCache = [];
+    /**
+     * @var array<string, string>
+     */
+    protected static array $ssrCache = [];
     protected Registry $registry;
     protected NormalizerInterface $normalizer;
     protected DenormalizerInterface $denormalizer;
@@ -306,7 +310,10 @@ class Manager implements ServiceSubscriberInterface
                 ]);
 
                 $returnContext['ssr'] = [
-                    'html' => $this->ssrRenderer->render($flowOptions, $ssrOptions['rootComponent'] ?? $ssrOptions['mainComponent'] ?? null),
+                    'html' => $this->renderSsrFragment(
+                        $flowOptions,
+                        $ssrOptions['rootComponent'] ?? $ssrOptions['mainComponent'] ?? null
+                    ),
                     'flowOptions' => $flowOptions,
                 ];
             }
@@ -661,7 +668,7 @@ class Manager implements ServiceSubscriberInterface
 
         if ($ssr && $this->ssrEnabled && $this->ssrRenderer) {
             $rootComponent = $options['mainComponent'] ?? $options['rootComponent'] ?? null;
-            $response['ssr'] = $this->ssrRenderer->render($flowOptions, $rootComponent);
+            $response['ssr'] = $this->renderSsrFragment($flowOptions, $rootComponent);
         }
 
         return $response;
@@ -893,6 +900,65 @@ class Manager implements ServiceSubscriberInterface
 /**
  * Auto-generated Flow template cache
  * Hash: {$payload['hash']}
+ */
+return {$export};
+
+PHP;
+
+        @file_put_contents($filePath, $phpCode);
+    }
+
+    private function renderSsrFragment(string $flowOptions, ?string $rootComponent): string
+    {
+        $cacheKey = md5($flowOptions . '|' . ($rootComponent ?? ''));
+
+        if (isset(self::$ssrCache[$cacheKey])) {
+            return self::$ssrCache[$cacheKey];
+        }
+
+        if ($this->cacheEnabled) {
+            $cached = $this->loadSsrCacheFromDisk($cacheKey);
+            if ($cached !== null) {
+                return self::$ssrCache[$cacheKey] = $cached;
+            }
+        }
+
+        $html = $this->ssrRenderer?->render($flowOptions, $rootComponent) ?? '';
+        self::$ssrCache[$cacheKey] = $html;
+
+        if ($this->cacheEnabled) {
+            $this->storeSsrCache($cacheKey, $html);
+        }
+
+        return $html;
+    }
+
+    private function loadSsrCacheFromDisk(string $hash): ?string
+    {
+        $filePath = $this->getSsrCachePath($hash);
+        if (!is_file($filePath)) {
+            return null;
+        }
+
+        $cached = require $filePath;
+        return is_string($cached) ? $cached : null;
+    }
+
+    private function getSsrCachePath(string $hash): string
+    {
+        return rtrim($this->cacheDirectory, '/\\') . DIRECTORY_SEPARATOR . sprintf('ssr_%s.php', $hash);
+    }
+
+    private function storeSsrCache(string $hash, string $html): void
+    {
+        $filePath = $this->getSsrCachePath($hash);
+        $export = var_export($html, true);
+        $phpCode = <<<PHP
+<?php
+
+/**
+ * Auto-generated Flow SSR cache
+ * Hash: {$hash}
  */
 return {$export};
 

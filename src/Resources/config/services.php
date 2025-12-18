@@ -4,6 +4,7 @@ use Flow\Asset\AssetPackage;
 use Flow\Command\InstallFlowAssetsCommand;
 use Flow\Contract\SecurityInterface;
 use Flow\Contract\Transport;
+use Flow\Controller\FlowController;
 use Flow\Security\RoleBasedSecurity;
 use Flow\Service\{FlowComponentCacheWarmer, FlowTwigExtension, Manager, Registry, SsrRenderer};
 use Flow\Transport\AjaxJsonTransport;
@@ -79,4 +80,7 @@ return function (ContainerConfigurator $configurator) {
     $services->set(InstallFlowAssetsCommand::class)
         ->arg('$projectDir', param('kernel.project_dir'))
         ->tag('console.command');
+
+    $services->set(FlowController::class)
+        ->public();
 };
