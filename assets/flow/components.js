@@ -35,10 +35,10 @@ import {
 } from 'vue';
 
 
-import {debounce, throttle} from "./helpers";
+import {debounce, throttle} from "./helpers.js";
 
 
-import {createFlowRouter} from "./router";
+import {createFlowRouter} from "./router.js";
 
 const _Vue = {
     createVNode,

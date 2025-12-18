@@ -69,6 +69,8 @@ class Manager implements ServiceSubscriberInterface
     protected bool $componentSecurityEnabled;
     protected mixed $unauthorizedRoute;
     protected mixed $loginRoute;
+    protected ?SsrRenderer $ssrRenderer = null;
+    protected bool $ssrEnabled = false;
     protected array $componentAuthorization = [];
     protected array $accessDeniedComponents = [];
     protected mixed $redirectTarget = null;
@@ -88,6 +90,8 @@ class Manager implements ServiceSubscriberInterface
         bool                                         $componentSecurityEnabled = false,
         mixed                                        $unauthorizedRoute = null,
         mixed                                        $loginRoute = null,
+        ?SsrRenderer                                 $ssrRenderer = null,
+        bool                                         $ssrEnabled = false,
     )
     {
         $this->registry = $registry;
@@ -99,6 +103,8 @@ class Manager implements ServiceSubscriberInterface
         $this->componentSecurityEnabled = $componentSecurityEnabled;
         $this->unauthorizedRoute = $unauthorizedRoute;
         $this->loginRoute = $loginRoute;
+        $this->ssrRenderer = $ssrRenderer;
+        $this->ssrEnabled = $ssrEnabled;
 
         foreach ($stores as $store) {
             $this->stateInstances[get_class($store)] = $store;
@@ -285,6 +291,25 @@ class Manager implements ServiceSubscriberInterface
             }
 
             $returnContext['security'] = $this->getSecurityMetadata();
+
+            $ssrRequested = ($requestContext['ssr'] ?? false) && $this->ssrRenderer && $this->ssrEnabled;
+            if ($ssrRequested) {
+                $ssrOptions = is_array($requestContext['ssr']) ? $requestContext['ssr'] : [];
+                $flowOptions = $this->compileJsFlowOptions([
+                    'components' => $ssrOptions['components'] ?? ($requestContext['components'] ?? ['*' => []]),
+                    'stores' => $ssrOptions['stores'] ?? ['*' => []],
+                    'states' => $ssrOptions['states'] ?? ['*' => []],
+                    'endpoint' => $ssrOptions['endpoint'] ?? null,
+                    'mainComponent' => $ssrOptions['mainComponent'] ?? $ssrOptions['rootComponent'] ?? null,
+                    'mount' => $ssrOptions['mount'] ?? null,
+                    'autoloadComponents' => $ssrOptions['autoloadComponents'] ?? null,
+                ]);
+
+                $returnContext['ssr'] = [
+                    'html' => $this->ssrRenderer->render($flowOptions, $ssrOptions['rootComponent'] ?? $ssrOptions['mainComponent'] ?? null),
+                    'flowOptions' => $flowOptions,
+                ];
+            }
 
 //        todo: implement lazy component loading
 //        if (!empty($requestContext['components'])) {
@@ -599,6 +624,18 @@ class Manager implements ServiceSubscriberInterface
             'security' => $this->getSecurityMetadata(),
         ];
 
+        if (!empty($options['mainComponent'])) {
+            $flowOptions['mainComponent'] = $options['mainComponent'];
+        }
+
+        if (!empty($options['mount'])) {
+            $flowOptions['mount'] = $options['mount'];
+        }
+
+        if (array_key_exists('autoloadComponents', $options)) {
+            $flowOptions['autoloadComponents'] = $options['autoloadComponents'];
+        }
+
         if (!empty($options['endpoint'])) {
             $flowOptions['endpoint'] = $options['endpoint'];
         }
@@ -612,6 +649,22 @@ class Manager implements ServiceSubscriberInterface
             $jsObject = strtr($jsObject, $placeholders);
         }
         return $jsObject;
+    }
+
+    public function renderHydratableView(array $options = [], bool $ssr = false): array
+    {
+        $flowOptions = $this->compileJsFlowOptions($options);
+
+        $response = [
+            'flowOptions' => $flowOptions,
+        ];
+
+        if ($ssr && $this->ssrEnabled && $this->ssrRenderer) {
+            $rootComponent = $options['mainComponent'] ?? $options['rootComponent'] ?? null;
+            $response['ssr'] = $this->ssrRenderer->render($flowOptions, $rootComponent);
+        }
+
+        return $response;
     }
 
     /**

@@ -34,6 +34,20 @@ class FlowTwigExtension extends AbstractExtension
                 [
                     'is_safe' => ['html'],
                 ]
+            ),
+            new TwigFunction(
+                'flow_hydrate',
+                function (array $options = [], bool $ssr = true) {
+                    $view = $this->manager->renderHydratableView($options, $ssr);
+
+                    $html = $view['ssr'] ?? '';
+                    $loader = sprintf('<script>window.FlowOptions=%s;</script>', $view['flowOptions']);
+
+                    return $html . $loader;
+                },
+                [
+                    'is_safe' => ['html'],
+                ]
             )
         ];
     }
