@@ -5,6 +5,7 @@ use Flow\Command\InstallFlowAssetsCommand;
 use Flow\Contract\SecurityInterface;
 use Flow\Contract\Transport;
 use Flow\Controller\FlowController;
+use Flow\Routing\FlowRouter;
 use Flow\Security\RoleBasedSecurity;
 use Flow\Service\{FlowComponentCacheWarmer, FlowTwigExtension, Manager, Registry, SsrRenderer};
 use Flow\Transport\AjaxJsonTransport;
@@ -71,6 +72,11 @@ return function (ContainerConfigurator $configurator) {
     $services->set(FlowComponentCacheWarmer::class)
         ->tag('kernel.cache_warmer');
     $services->set(FlowTwigExtension::class);
+
+    $services->set(FlowRouter::class)
+        ->decorate('router')
+        ->args([service('.inner'), service(Registry::class)])
+        ->public();
 
     $services->set(SsrRenderer::class)
         ->arg('$projectDir', param('kernel.project_dir'))

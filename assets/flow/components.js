@@ -533,6 +533,16 @@ export class Bridge {
         this.$app = app;
     }
 
+    setEndpoint(endpoint) {
+        if (typeof endpoint !== 'string' || endpoint.length === 0 || this.endpoint === endpoint) {
+            return;
+        }
+        this.endpoint = endpoint;
+        if (this.batch) {
+            this.batch.endpoint = endpoint;
+        }
+    }
+
 
     beginBatch(options = {}) {
         if (!this.batch) {
