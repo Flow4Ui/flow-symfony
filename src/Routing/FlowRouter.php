@@ -6,13 +6,14 @@ use Flow\Attributes\Router as FlowRoute;
 use Flow\Service\Registry;
 use Symfony\Component\Routing\Exception\MissingMandatoryParametersException;
 use Symfony\Component\Routing\Exception\RouteNotFoundException;
+use Symfony\Component\HttpKernel\CacheWarmer\WarmableInterface;
 use Symfony\Component\Routing\Generator\UrlGenerator;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RequestContext;
 use Symfony\Component\Routing\RouteCollection;
 use Symfony\Component\Routing\RouterInterface;
 
-class FlowRouter implements RouterInterface
+class FlowRouter implements RouterInterface, WarmableInterface
 {
     public function __construct(
         private RouterInterface $inner,
@@ -38,6 +39,15 @@ class FlowRouter implements RouterInterface
     public function match(string $pathinfo): array
     {
         return $this->inner->match($pathinfo);
+    }
+
+    public function warmUp(string $cacheDir, ?string $buildDir = null): array
+    {
+        if ($this->inner instanceof WarmableInterface) {
+            return $this->inner->warmUp($cacheDir);
+        }
+
+        return [];
     }
 
     public function generate(string $name, array $parameters = [], int $referenceType = self::ABSOLUTE_PATH): string
