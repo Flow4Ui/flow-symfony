@@ -4,9 +4,9 @@ namespace Flow\Routing;
 
 use Flow\Attributes\Router as FlowRoute;
 use Flow\Service\Registry;
+use Symfony\Component\HttpKernel\CacheWarmer\WarmableInterface;
 use Symfony\Component\Routing\Exception\MissingMandatoryParametersException;
 use Symfony\Component\Routing\Exception\RouteNotFoundException;
-use Symfony\Component\HttpKernel\CacheWarmer\WarmableInterface;
 use Symfony\Component\Routing\Generator\UrlGenerator;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RequestContext;
@@ -17,8 +17,9 @@ class FlowRouter implements RouterInterface, WarmableInterface
 {
     public function __construct(
         private RouterInterface $inner,
-        private Registry $registry,
-    ) {
+        private Registry        $registry,
+    )
+    {
     }
 
     public function getRouteCollection(): RouteCollection
@@ -29,11 +30,6 @@ class FlowRouter implements RouterInterface, WarmableInterface
     public function setContext(RequestContext $context): void
     {
         $this->inner->setContext($context);
-    }
-
-    public function getContext(): RequestContext
-    {
-        return $this->inner->getContext();
     }
 
     public function match(string $pathinfo): array
@@ -91,7 +87,7 @@ class FlowRouter implements RouterInterface, WarmableInterface
         if (self::RELATIVE_PATH === $referenceType) {
             $url = UrlGenerator::getRelativePath($context->getPathInfo(), $path);
         } else {
-            $url = $this->getSchemeAuthority($context, $referenceType).$context->getBaseUrl().$path;
+            $url = $this->getSchemeAuthority($context, $referenceType) . $context->getBaseUrl() . $path;
         }
 
         $extra = array_diff_key($parameters, $usedParameters);
@@ -105,11 +101,11 @@ class FlowRouter implements RouterInterface, WarmableInterface
         $this->normalizeQueryParameters($extra);
 
         if ($extra && $query = http_build_query($extra, '', '&', \PHP_QUERY_RFC3986)) {
-            $url .= '?'.$query;
+            $url .= '?' . $query;
         }
 
         if ('' !== $fragment) {
-            $url .= '#'.rawurlencode((string) $fragment);
+            $url .= '#' . rawurlencode((string)$fragment);
         }
 
         return $url;
@@ -117,16 +113,17 @@ class FlowRouter implements RouterInterface, WarmableInterface
 
     private function interpolateRoutePath(
         string $path,
-        array $parameters,
-        array &$usedParameters,
-        array &$missingParameters,
-    ): string {
+        array  $parameters,
+        array  &$usedParameters,
+        array  &$missingParameters,
+    ): string
+    {
         $path = $this->replaceCurlyParameters($path, $parameters, $usedParameters, $missingParameters);
         $path = $this->replaceColonParameters($path, $parameters, $usedParameters, $missingParameters);
         $path = preg_replace('#//+#', '/', $path);
 
         if ($path === '' || $path[0] !== '/') {
-            $path = '/'.ltrim($path, '/');
+            $path = '/' . ltrim($path, '/');
         }
 
         return $path;
@@ -134,10 +131,11 @@ class FlowRouter implements RouterInterface, WarmableInterface
 
     private function replaceCurlyParameters(
         string $path,
-        array $parameters,
-        array &$usedParameters,
-        array &$missingParameters,
-    ): string {
+        array  $parameters,
+        array  &$usedParameters,
+        array  &$missingParameters,
+    ): string
+    {
         return preg_replace_callback('/\{([A-Za-z0-9_]+)\}/', function (array $matches) use (
             $parameters,
             &$usedParameters,
@@ -156,12 +154,27 @@ class FlowRouter implements RouterInterface, WarmableInterface
         }, $path);
     }
 
+    private function formatPathValue(mixed $value): string
+    {
+        if (is_array($value)) {
+            $encoded = array_map(fn($segment) => rawurlencode((string)$segment), $value);
+            return implode('/', $encoded);
+        }
+
+        if ($value instanceof \Stringable) {
+            $value = (string)$value;
+        }
+
+        return rawurlencode((string)$value);
+    }
+
     private function replaceColonParameters(
         string $path,
-        array $parameters,
-        array &$usedParameters,
-        array &$missingParameters,
-    ): string {
+        array  $parameters,
+        array  &$usedParameters,
+        array  &$missingParameters,
+    ): string
+    {
         return preg_replace_callback(
             '/:([A-Za-z0-9_]+)(?:\([^)]*\))?([?*+]?)?/',
             function (array $matches) use ($parameters, &$usedParameters, &$missingParameters): string {
@@ -186,39 +199,29 @@ class FlowRouter implements RouterInterface, WarmableInterface
         );
     }
 
-    private function formatPathValue(mixed $value): string
-    {
-        if (is_array($value)) {
-            $encoded = array_map(fn ($segment) => rawurlencode((string) $segment), $value);
-            return implode('/', $encoded);
-        }
-
-        if ($value instanceof \Stringable) {
-            $value = (string) $value;
-        }
-
-        return rawurlencode((string) $value);
-    }
-
     private function applyFlowBase(string $path): string
     {
         $mode = $this->registry->getRouterMode();
         $base = $this->normalizeBasePath($this->registry->getRouterBase());
-        $path = '/'.ltrim($path, '/');
+        $path = '/' . ltrim($path, '/');
 
         if ($mode === 'hash') {
             if ($base !== '') {
-                return $base.'/#'.$path;
+                return $base . '/#' . $path;
             }
 
-            return '/#'.$path;
+            return '/#' . $path;
         }
 
         if ($base === '' || $path === '/') {
             return $base === '' ? $path : $base;
         }
 
-        return $base.$path;
+        if (str_ends_with($base, '/')) {
+            return $base . ltrim($path, '/');
+        }
+
+        return $base . $path;
     }
 
     private function normalizeBasePath(?string $base): string
@@ -227,7 +230,12 @@ class FlowRouter implements RouterInterface, WarmableInterface
             return '';
         }
 
-        return '/'.trim($base, '/');
+        return '/' . trim($base, '/');
+    }
+
+    public function getContext(): RequestContext
+    {
+        return $this->inner->getContext();
     }
 
     private function getSchemeAuthority(RequestContext $context, int $referenceType): string
@@ -245,16 +253,16 @@ class FlowRouter implements RouterInterface, WarmableInterface
 
         $port = '';
         if ($scheme === 'http' && 80 !== $context->getHttpPort()) {
-            $port = ':'.$context->getHttpPort();
+            $port = ':' . $context->getHttpPort();
         } elseif ($scheme === 'https' && 443 !== $context->getHttpsPort()) {
-            $port = ':'.$context->getHttpsPort();
+            $port = ':' . $context->getHttpsPort();
         }
 
         if ($referenceType === UrlGeneratorInterface::NETWORK_PATH || $scheme === '') {
-            return '//'.$host.$port;
+            return '//' . $host . $port;
         }
 
-        return $scheme.'://'.$host.$port;
+        return $scheme . '://' . $host . $port;
     }
 
     private function normalizeQueryParameters(array &$parameters): void
@@ -264,7 +272,7 @@ class FlowRouter implements RouterInterface, WarmableInterface
                 if ($vars = get_object_vars($value)) {
                     $value = $vars;
                 } elseif ($value instanceof \Stringable) {
-                    $value = (string) $value;
+                    $value = (string)$value;
                 }
             }
         });
