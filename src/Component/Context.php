@@ -67,6 +67,9 @@ class Context
         'in',
         'of',
         'console',
+        'window',
+        'document',
+        'globalThis',
         'Date',
         'Regex',
         'Math',
@@ -144,26 +147,35 @@ class Context
         }
 
         $wrapped = sprintf('(%s)', $expression);
-        $program = Peast::latest($wrapped, [
+
+        try {
+            $program = Peast::latest($wrapped, [
+                'sourceType' => Peast::SOURCE_TYPE_MODULE,
+            ])->parse();
+
+            $body = $program->getBody();
+            if (empty($body)) {
+                return $this->astCache[$expression] = [null, 0];
+            }
+
+            $statement = $body[0];
+            if (method_exists($statement, 'getExpression')) {
+                $node = $statement->getExpression();
+                if ($node instanceof ParenthesizedExpression) {
+                    $node = $node->getExpression();
+                }
+
+                return $this->astCache[$expression] = [$node, 1];
+            }
+        } catch (Throwable) {
+            // Fallback below handles multi-statement snippets such as event handlers.
+        }
+
+        $program = Peast::latest($expression, [
             'sourceType' => Peast::SOURCE_TYPE_MODULE,
         ])->parse();
 
-        $body = $program->getBody();
-        if (empty($body)) {
-            return $this->astCache[$expression] = [null, 0];
-        }
-
-        $statement = $body[0];
-        if (!method_exists($statement, 'getExpression')) {
-            return $this->astCache[$expression] = [null, 0];
-        }
-
-        $node = $statement->getExpression();
-        if ($node instanceof ParenthesizedExpression) {
-            $node = $node->getExpression();
-        }
-
-        return $this->astCache[$expression] = [$node, 1];
+        return $this->astCache[$expression] = [$program, 0];
     }
 
     public function isAsyncExpression(string $expression): bool

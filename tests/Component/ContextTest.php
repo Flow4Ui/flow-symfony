@@ -2,6 +2,7 @@
 
 namespace App\Tests\Component;
 
+use Flow\Attributes\Component;
 use Flow\Component\Context;
 use PHPUnit\Framework\TestCase;
 
@@ -41,5 +42,22 @@ class ContextTest extends TestCase
         $result = $context->parseExpression("unvalued ? '—' : formatMoney(lineTotal(entry))");
 
         $this->assertSame("this.unvalued ? '—' : this.formatMoney(this.lineTotal(this.entry))", $result);
+    }
+
+    public function testParseExpressionHandlesMultiStatementHandlerBodies(): void
+    {
+        $context = new Context(null, new Component(props: ['locale']));
+        $expression = '$router.push({ name: \'admin_home\', params: { locale: locale || \'pt\' } }); if (window.innerWidth < 1024) { $emit(\'toggle\'); }';
+        $result = $context->parseExpression($expression);
+
+        $this->assertSame('this.$router.push({ name: \'admin_home\', params: { locale: this.$props.locale || \'pt\' } }); if (window.innerWidth < 1024) { this.$emit(\'toggle\'); }', $result);
+    }
+
+    public function testParseExpressionTreatsWindowAsGlobal(): void
+    {
+        $context = new Context();
+        $result = $context->parseExpression('window.innerWidth < 1024');
+
+        $this->assertSame('window.innerWidth < 1024', $result);
     }
 }
