@@ -219,6 +219,20 @@ HTML;
         $this->assertArrayNotHasKey('modelDynamic', $element->directives);
     }
 
+    public function testVIfWithTernaryConditionIsParenthesizedInRenderOutput(): void
+    {
+        $template = '<button v-if="editingId !== null ? canEdit : canCreate" type="submit">Save</button>';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+
+        $rendered = $fragment->render(new Context());
+
+        $this->assertStringContainsString(
+            '((this.editingId !== null ? this.canEdit : this.canCreate)?(v.openBlock(),v.createElementVNode("button"',
+            str_replace(["\n", " "], '', $rendered)
+        );
+    }
+
     private function compileSingleElement(string $template): FlowElement
     {
         $compiler = new Compiler();
