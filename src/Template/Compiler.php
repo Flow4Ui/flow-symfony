@@ -166,6 +166,7 @@ class Compiler
         $ifExpression = null;
         $forExpression = null;
         $else = false;
+        $defaultVModelExpression = null;
 
         foreach ($domElement->attributes as $prop => $value) {
             $prop = $this->getNameFromId($prop);
@@ -279,6 +280,10 @@ class Compiler
                         $vModelProp = array_shift($modifiers);
                         $vModelValue = explode(':', $vModelProp, 2)[1] ?? 'modelValue';
 
+                        if ($vModelValue === 'modelValue') {
+                            $defaultVModelExpression = new Expression($value->value);
+                        }
+
                         $element->dynamicProperties[] = $vModelValue;
                         $this->assignProp($element, $vModelValue, new Expression($value->value));
 
@@ -337,6 +342,21 @@ class Compiler
                 } else {
                     $forExpression->pathFlags |= PathFlags::UNKEYED_FRAGMENT;
                 }
+            }
+        }
+
+        if ($defaultVModelExpression !== null && $this->isNativeModelTarget($element)) {
+            $nativeModelDirective = $this->resolveNativeModelDirective($element);
+
+            if ($nativeModelDirective !== null) {
+                $element->directives[$nativeModelDirective] = $defaultVModelExpression;
+                unset($element->props['modelValue']);
+                $element->dynamicProperties = array_values(
+                    array_filter(
+                        $element->dynamicProperties,
+                        static fn(string $property): bool => $property !== 'modelValue'
+                    )
+                );
             }
         }
 
@@ -676,5 +696,47 @@ class Compiler
             if ($argument[0] !== '\'' && $argument[0] !== '"' && str_contains($argument, '@')) $argument = str_replace('@', '.', $argument);
         }
         return $arguments;
+    }
+
+    private function isNativeModelTarget(Element $element): bool
+    {
+        if ($element instanceof ComponentElement) {
+            return false;
+        }
+
+        return in_array($element->tag, ['input', 'textarea', 'select'], true);
+    }
+
+    private function resolveNativeModelDirective(Element $element): ?string
+    {
+        if ($element->tag === 'textarea') {
+            return 'modelText';
+        }
+
+        if ($element->tag === 'select') {
+            return 'modelSelect';
+        }
+
+        if ($element->tag !== 'input') {
+            return null;
+        }
+
+        $type = $element->props['type'] ?? null;
+        if ($type instanceof Expression) {
+            return 'modelDynamic';
+        }
+
+        if (is_string($type)) {
+            $type = strtolower($type);
+            if ($type === 'radio') {
+                return 'modelRadio';
+            }
+
+            if ($type === 'checkbox') {
+                return 'modelCheckbox';
+            }
+        }
+
+        return 'modelText';
     }
 }

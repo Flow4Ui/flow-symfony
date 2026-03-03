@@ -28,6 +28,11 @@ import {
     Transition,
     TransitionGroup,
     vShow,
+    vModelCheckbox,
+    vModelDynamic,
+    vModelRadio,
+    vModelSelect,
+    vModelText,
     withCtx,
     withDirectives,
     withKeys,
@@ -77,6 +82,21 @@ const _Vue = {
 _Vue.resolveDirective = (name) => {
     if (name === 'show') {
         return vShow;
+    }
+    if (name === 'modelText') {
+        return vModelText;
+    }
+    if (name === 'modelRadio') {
+        return vModelRadio;
+    }
+    if (name === 'modelCheckbox') {
+        return vModelCheckbox;
+    }
+    if (name === 'modelSelect') {
+        return vModelSelect;
+    }
+    if (name === 'modelDynamic') {
+        return vModelDynamic;
     }
     return resolveDirective(name);
 };

@@ -148,4 +148,86 @@ HTML;
         $this->assertInstanceOf(TemplateElement::class, $defaultSlot);
         $this->assertSame('{ open }', $defaultSlot->propsName);
     }
+
+    public function testInputModelTextDirectiveIsGeneratedForNumberInput(): void
+    {
+        $element = $this->compileSingleElement('<input v-model="x" type="number">');
+
+        $this->assertArrayHasKey('modelText', $element->directives);
+        $this->assertArrayNotHasKey('modelValue', $element->props);
+        $this->assertArrayHasKey('onUpdate:modelValue', $element->props);
+    }
+
+    public function testInputModelRadioDirectiveIsGenerated(): void
+    {
+        $element = $this->compileSingleElement('<input v-model="x" type="radio" value="A">');
+
+        $this->assertArrayHasKey('modelRadio', $element->directives);
+        $this->assertArrayNotHasKey('modelValue', $element->props);
+        $this->assertArrayHasKey('onUpdate:modelValue', $element->props);
+        $this->assertSame('A', $element->props['value']);
+    }
+
+    public function testInputModelCheckboxDirectiveIsGenerated(): void
+    {
+        $element = $this->compileSingleElement('<input v-model="x" type="checkbox" value="1">');
+
+        $this->assertArrayHasKey('modelCheckbox', $element->directives);
+        $this->assertArrayNotHasKey('modelValue', $element->props);
+        $this->assertArrayHasKey('onUpdate:modelValue', $element->props);
+        $this->assertSame('1', $element->props['value']);
+    }
+
+    public function testInputModelDynamicDirectiveIsGeneratedForDynamicType(): void
+    {
+        $element = $this->compileSingleElement('<input v-model="x" :type="kind">');
+
+        $this->assertArrayHasKey('modelDynamic', $element->directives);
+        $this->assertArrayNotHasKey('modelValue', $element->props);
+        $this->assertArrayHasKey('onUpdate:modelValue', $element->props);
+    }
+
+    public function testTextareaModelTextDirectiveIsGenerated(): void
+    {
+        $element = $this->compileSingleElement('<textarea v-model="x"></textarea>');
+
+        $this->assertArrayHasKey('modelText', $element->directives);
+        $this->assertArrayNotHasKey('modelValue', $element->props);
+        $this->assertArrayHasKey('onUpdate:modelValue', $element->props);
+    }
+
+    public function testSelectModelSelectDirectiveIsGenerated(): void
+    {
+        $element = $this->compileSingleElement('<select v-model="x"><option value="1">One</option></select>');
+
+        $this->assertArrayHasKey('modelSelect', $element->directives);
+        $this->assertArrayNotHasKey('modelValue', $element->props);
+        $this->assertArrayHasKey('onUpdate:modelValue', $element->props);
+    }
+
+    public function testComponentModelRemainsModelValueBased(): void
+    {
+        $element = $this->compileSingleElement('<MyInput v-model="x"></MyInput>');
+
+        $this->assertInstanceOf(ComponentElement::class, $element);
+        $this->assertArrayHasKey('modelValue', $element->props);
+        $this->assertArrayHasKey('onUpdate:modelValue', $element->props);
+        $this->assertArrayNotHasKey('modelText', $element->directives);
+        $this->assertArrayNotHasKey('modelSelect', $element->directives);
+        $this->assertArrayNotHasKey('modelCheckbox', $element->directives);
+        $this->assertArrayNotHasKey('modelRadio', $element->directives);
+        $this->assertArrayNotHasKey('modelDynamic', $element->directives);
+    }
+
+    private function compileSingleElement(string $template): FlowElement
+    {
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+
+        $this->assertInstanceOf(FragmentElement::class, $fragment);
+        $this->assertNotEmpty($fragment->children);
+        $this->assertInstanceOf(FlowElement::class, $fragment->children[0]);
+
+        return $fragment->children[0];
+    }
 }
