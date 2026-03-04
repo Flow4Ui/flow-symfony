@@ -578,7 +578,7 @@ class Manager implements ServiceSubscriberInterface
             $definitions['components'] = $this->appendComponents($requestedComponents);
             foreach ($definitions['components'] as $id => &$component) {
                 $placeholder = $component['name'] . 'RenderFunc' . $id;
-                $placeholders[json_encode($placeholder)] = sprintf('function(h,c,wm,wd,v,rc){%s}', $component['render']);
+                $placeholders[json_encode($placeholder)] = sprintf('function(h,c,wm,wd,v,rc,_c){%s}', $component['render']);
                 $component['render'] = $placeholder;
 
                 if (!empty($component['lifecycleEventMethods'])) {
