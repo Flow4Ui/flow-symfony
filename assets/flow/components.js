@@ -796,7 +796,7 @@ export class Bridge {
             this.ensureComponentStyles(component.styles);
         }
 
-        const render = typeof component.render === 'function' ? component.render : new Function('h', 'c', 'wm', 'wd', 'rc', component.render);
+        const render = typeof component.render === 'function' ? component.render : new Function('h', 'c', 'wm', 'wd', 'rc', '_c', component.render);
         const self = this;
 
 
@@ -937,7 +937,8 @@ export class Bridge {
                 },
                 render() {
                     let _wd = (component, directives) => wd(component, directives, this.$.appContext.directives);
-                    return render.call(this, h, c, withModifiers, _wd, _Vue, this.$.appContext.components);
+                    const _c = this.$.renderCache || (this.$.renderCache = []);
+                    return render.call(this, h, c, withModifiers, _wd, _Vue, this.$.appContext.components, _c);
                 },
                 ...lifecycle,
                 methods,

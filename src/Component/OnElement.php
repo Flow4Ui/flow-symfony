@@ -79,6 +79,7 @@ class OnElement extends Element
 
     public function render(?Context $context = null): string
     {
+        $context ??= new Context();
         $handlers = [];
         $contextWithArgs = $context->addScope(['$args']);
         foreach ($this->handlers as $handler) {
@@ -111,6 +112,9 @@ class OnElement extends Element
             if (!empty($keyModifiers)) {
                 $jsHandler = sprintf('v.withKeys(%s,%s)', $jsHandler, json_encode($keyModifiers));
             }
+
+            $cacheIndex = $contextWithArgs->nextHandlerCacheIndex();
+            $jsHandler = sprintf('(_c[%1$d] || (_c[%1$d] = %2$s))', $cacheIndex, $jsHandler);
             $handlers[] = $jsHandler;
         }
 

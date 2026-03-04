@@ -37,6 +37,7 @@ class Context
 
     public \ArrayObject $componentsElements;
     public \ArrayObject $directives;
+    public \ArrayObject $handlerCache;
     /**
      * @var true
      */
@@ -108,6 +109,7 @@ class Context
     {
         $this->componentsElements = new \ArrayObject();
         $this->directives = new \ArrayObject();
+        $this->handlerCache = new \ArrayObject(['index' => 0]);
     }
 
     /**
@@ -641,6 +643,14 @@ class Context
         $context->identifierHandler = $identifierHandler;
         return $context;
 
+    }
+
+    public function nextHandlerCacheIndex(): int
+    {
+        $index = (int)($this->handlerCache['index'] ?? 0);
+        $this->handlerCache['index'] = $index + 1;
+
+        return $index;
     }
 
     /**

@@ -233,6 +233,36 @@ HTML;
         );
     }
 
+    public function testVModelUpdateHandlersUseRenderCache(): void
+    {
+        $template = <<<'HTML'
+<fragment>
+  <input v-model="msg" type="radio" value="a" />
+  <input v-model="msg" type="radio" value="b" />
+  <input v-model="flag" type="checkbox" value="1" />
+</fragment>
+HTML;
+
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString('"onUpdate:modelValue":(_c[0]||(_c[0]=', $rendered);
+        $this->assertStringContainsString('"onUpdate:modelValue":(_c[1]||(_c[1]=', $rendered);
+        $this->assertStringContainsString('"onUpdate:modelValue":(_c[2]||(_c[2]=', $rendered);
+    }
+
+    public function testDomAndModelHandlersGetSequentialCacheIndexes(): void
+    {
+        $template = '<input v-model="msg" @change="onChange()" type="text" />';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString('"onUpdate:modelValue":(_c[0]||(_c[0]=', $rendered);
+        $this->assertStringContainsString('"onChange":(_c[1]||(_c[1]=', $rendered);
+    }
+
     private function compileSingleElement(string $template): FlowElement
     {
         $compiler = new Compiler();
