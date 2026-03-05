@@ -228,7 +228,7 @@ HTML;
         $rendered = $fragment->render(new Context());
 
         $this->assertStringContainsString(
-            '((this.editingId !== null ? this.canEdit : this.canCreate)?(v.openBlock(),v.createElementVNode("button"',
+            '((this.editingId!==null?this.canEdit:this.canCreate)?(v.openBlock(),v.createElementVNode("button"',
             str_replace(["\n", " "], '', $rendered)
         );
     }

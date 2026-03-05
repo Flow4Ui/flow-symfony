@@ -1,4 +1,5 @@
 # Flow-Symfony
+[![CI](https://github.com/Flow4Ui/flow-symfony/actions/workflows/ci.yml/badge.svg)](https://github.com/Flow4Ui/flow-symfony/actions/workflows/ci.yml)
 
 Flow-Symfony is a powerful integration of Vue framework with Symfony, enabling seamless development of reactive
 components in your Symfony applications.

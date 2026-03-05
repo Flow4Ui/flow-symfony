@@ -47,16 +47,24 @@ class ContextTest extends TestCase
     public function testParseExpressionHandlesMultiStatementHandlerBodies(): void
     {
         $context = new Context(null, new Component(props: ['locale']));
-        $expression = '$router.push({ name: \'admin_home\', params: { locale: locale || \'pt\' } }); if (window.innerWidth < 1024) { $emit(\'toggle\'); }';
+        $expression = '$router.push({ name: \'admin_home\', params: { locale: locale || \'pt\' } }); if ($window.innerWidth < 1024) { $emit(\'toggle\'); }';
         $result = $context->parseExpression($expression);
 
         $this->assertSame('this.$router.push({ name: \'admin_home\', params: { locale: this.$props.locale || \'pt\' } }); if (window.innerWidth < 1024) { this.$emit(\'toggle\'); }', $result);
     }
 
-    public function testParseExpressionTreatsWindowAsGlobal(): void
+    public function testParseExpressionScopesWindowLikeVueTemplateExpressions(): void
     {
         $context = new Context();
         $result = $context->parseExpression('window.innerWidth < 1024');
+
+        $this->assertSame('this.window.innerWidth < 1024', $result);
+    }
+
+    public function testParseExpressionTreatsDollarWindowAsGlobal(): void
+    {
+        $context = new Context();
+        $result = $context->parseExpression('$window.innerWidth < 1024');
 
         $this->assertSame('window.innerWidth < 1024', $result);
     }
