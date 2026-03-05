@@ -38,6 +38,7 @@ class Context
     public \ArrayObject $componentsElements;
     public \ArrayObject $directives;
     public \ArrayObject $handlerCache;
+    public \ArrayObject $renderAnalysis;
     /**
      * @var true
      */
@@ -107,6 +108,7 @@ class Context
         $this->componentsElements = new \ArrayObject();
         $this->directives = new \ArrayObject();
         $this->handlerCache = new \ArrayObject(['index' => 0]);
+        $this->renderAnalysis = new \ArrayObject(['dynamicScopeVersion' => 0]);
     }
 
     /**
@@ -200,6 +202,41 @@ class Context
         return $this->asyncExpressionCache[$expression] = $this->expressionContainsAwait($ast);
     }
 
+    public function expressionUsesDynamicScope(string $expression): bool
+    {
+        if (trim($expression) === '') {
+            return false;
+        }
+
+        $dynamicScopeNames = [];
+        foreach (array_slice($this->scopes, 1) as $scope) {
+            foreach ($scope as $name) {
+                $dynamicScopeNames[$name] = true;
+            }
+        }
+
+        if (empty($dynamicScopeNames)) {
+            return false;
+        }
+
+        try {
+            [$ast] = $this->createExpressionAst($expression);
+        } catch (Throwable) {
+            return $this->legacyExpressionUsesDynamicScope($expression, array_keys($dynamicScopeNames));
+        }
+
+        if ($ast === null) {
+            return $this->legacyExpressionUsesDynamicScope($expression, array_keys($dynamicScopeNames));
+        }
+
+        return $this->expressionUsesScopedIdentifiers($ast, null, [], $dynamicScopeNames);
+    }
+
+    public function hasDynamicScopes(): bool
+    {
+        return count($this->scopes) > 1;
+    }
+
     private function expressionContainsAwait(SyntaxNode $node): bool
     {
         if ($node instanceof AwaitExpression) {
@@ -226,9 +263,63 @@ class Context
         return false;
     }
 
+    /**
+     * @param array<string, bool> $dynamicScopeNames
+     * @param array<int, array<int, string>> $scopeStack
+     */
+    private function expressionUsesScopedIdentifiers(
+        SyntaxNode $node,
+        ?SyntaxNode $parent,
+        array $scopeStack,
+        array $dynamicScopeNames
+    ): bool {
+        $scopeStack = $this->updateScopeStack($node, $scopeStack);
+
+        if ($node instanceof Identifier && !$this->shouldSkipIdentifier($node, $parent)) {
+            $name = $node->getName();
+
+            if (isset($dynamicScopeNames[$name]) || $this->isIdentifierInLocalScope($name, $scopeStack)) {
+                return true;
+            }
+        }
+
+        foreach (Utils::getNodeProperties($node, true) as $prop) {
+            $child = $node->{$prop['getter']}();
+            if ($child === null) {
+                continue;
+            }
+
+            if (is_array($child)) {
+                foreach ($child as $childNode) {
+                    if ($childNode instanceof SyntaxNode && $this->expressionUsesScopedIdentifiers($childNode, $node, $scopeStack, $dynamicScopeNames)) {
+                        return true;
+                    }
+                }
+            } elseif ($child instanceof SyntaxNode && $this->expressionUsesScopedIdentifiers($child, $node, $scopeStack, $dynamicScopeNames)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function legacyIsAsyncExpression(string $expression): bool
     {
         return preg_match('/(^|\\W)await\\b/', $expression) === 1;
+    }
+
+    /**
+     * @param array<int, string> $dynamicScopeNames
+     */
+    private function legacyExpressionUsesDynamicScope(string $expression, array $dynamicScopeNames): bool
+    {
+        foreach ($dynamicScopeNames as $name) {
+            if (preg_match('/(^|\\W)' . preg_quote($name, '/') . '(\\W|$)/', $expression) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function parseExpressionWithPeast(string $expression): string
@@ -648,6 +739,17 @@ class Context
         $this->handlerCache['index'] = $index + 1;
 
         return $index;
+    }
+
+    public function markDynamicScopeCapture(): void
+    {
+        $version = (int)($this->renderAnalysis['dynamicScopeVersion'] ?? 0);
+        $this->renderAnalysis['dynamicScopeVersion'] = $version + 1;
+    }
+
+    public function dynamicScopeCaptureVersion(): int
+    {
+        return (int)($this->renderAnalysis['dynamicScopeVersion'] ?? 0);
     }
 
     /**

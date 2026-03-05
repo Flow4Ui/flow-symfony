@@ -25,6 +25,7 @@ class TemplateElement extends Element
 
     public function render(?Context $context = null): string
     {
+        $context ??= new Context();
         if ($this->name === '') {
             //todo: check, this case will be converted to fragment at compile time
             return implode(',', $this->renderChildren($context));
@@ -40,7 +41,18 @@ class TemplateElement extends Element
             $context = $context->addScope($propsNameScope);
         }
 
-        return sprintf('%s:v.withCtx((%s)=>{return [%s];}/*,undefined,true*/)', json_encode($this->name), $propsName, implode(',', $this->renderChildren($context)));
+        $dynamicScopeVersion = $context->dynamicScopeCaptureVersion();
+        $slotFn = sprintf('v.withCtx((%s)=>{return [%s];}/*,undefined,true*/)', $propsName, implode(',', $this->renderChildren($context)));
+        if (
+            $propsName === ''
+            && !$context->hasDynamicScopes()
+            && $dynamicScopeVersion === $context->dynamicScopeCaptureVersion()
+        ) {
+            $cacheIndex = $context->nextHandlerCacheIndex();
+            $slotFn = sprintf('(_c[%1$d] || (_c[%1$d] = %2$s))', $cacheIndex, $slotFn);
+        }
+
+        return sprintf('%s:%s', json_encode($this->name), $slotFn);
     }
 
     /**

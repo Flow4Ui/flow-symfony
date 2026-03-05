@@ -263,6 +263,93 @@ HTML;
         $this->assertStringContainsString('"onChange":(_c[1]||(_c[1]=', $rendered);
     }
 
+    public function testSimpleMethodReferenceHandlersAreCached(): void
+    {
+        $template = '<button @click="save">Save</button>';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString('"onClick":(_c[0]||(_c[0]=this.save&&this.save.bind(this)))', $rendered);
+    }
+
+    public function testSimpleInlineHandlersAreCached(): void
+    {
+        $template = '<button @click="save()">Save</button>';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString('"onClick":(_c[0]||(_c[0]=($event,...$args)=>{this.save()}))', $rendered);
+    }
+
+    public function testComponentEventHandlersAreCached(): void
+    {
+        $template = '<TopBar @logout="doLogout"></TopBar>';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString('"onLogout":(_c[0]||(_c[0]=this.doLogout&&this.doLogout.bind(this)))', $rendered);
+    }
+
+    public function testHandlersUsingVForScopeAreNotCached(): void
+    {
+        $template = <<<'HTML'
+<ul>
+  <li v-for="action in actions" :key="action.name">
+    <button @click="handle(action)">{{ action.label }}</button>
+  </li>
+</ul>
+HTML;
+
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString('"onClick":($event,...$args)=>{this.handle(action)}', $rendered);
+        $this->assertStringNotContainsString('"onClick":(_c[', $rendered);
+    }
+
+    public function testHandlersUsingInlineClosureParamsAreNotCached(): void
+    {
+        $template = '<button @click="items.map(item => select(item))">Select</button>';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString('"onClick":($event,...$args)=>{this.items.map(item=>this.select(item))}', $rendered);
+        $this->assertStringNotContainsString('"onClick":(_c[', $rendered);
+    }
+
+    public function testPureWithCtxSlotIsCached(): void
+    {
+        $template = '<MyCard><template #default><span>{{ title }}</span></template></MyCard>';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString('"default":(_c[0]||(_c[0]=v.withCtx(()=>{return[', $rendered);
+    }
+
+    public function testWithCtxSlotInsideLoopIsNotCached(): void
+    {
+        $template = <<<'HTML'
+<MyCard>
+  <template #default>
+    <span v-for="item in items" :key="item.id">{{ item.label }}</span>
+  </template>
+</MyCard>
+HTML;
+
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString('"default":v.withCtx(()=>{return[', $rendered);
+        $this->assertStringNotContainsString('"default":(_c[', $rendered);
+    }
+
     private function compileSingleElement(string $template): FlowElement
     {
         $compiler = new Compiler();

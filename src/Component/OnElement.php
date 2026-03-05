@@ -113,8 +113,10 @@ class OnElement extends Element
                 $jsHandler = sprintf('v.withKeys(%s,%s)', $jsHandler, json_encode($keyModifiers));
             }
 
-            $cacheIndex = $contextWithArgs->nextHandlerCacheIndex();
-            $jsHandler = sprintf('(_c[%1$d] || (_c[%1$d] = %2$s))', $cacheIndex, $jsHandler);
+            if (!$contextWithArgs->expressionUsesDynamicScope($handler['fn']->expression)) {
+                $cacheIndex = $contextWithArgs->nextHandlerCacheIndex();
+                $jsHandler = sprintf('(_c[%1$d] || (_c[%1$d] = %2$s))', $cacheIndex, $jsHandler);
+            }
             $handlers[] = $jsHandler;
         }
 

@@ -21,6 +21,7 @@ class ForElement extends Element
     public function render(Context|null $context = null): string
     {
         $context ??= new Context();
+        $context->markDynamicScopeCapture();
 
         if (!preg_match_all('/\w+(?=\s*(,|\)|$))/', $this->for->expression, $matches)) {
             throw new FlowException('unexpected value in v-for ' . $this->for->expression);
