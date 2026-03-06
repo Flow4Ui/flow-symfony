@@ -13,10 +13,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php-version:
-          - '8.1'
-          - '8.2'
-          - '8.3'
+        include:
+          - php-version: '8.1'
+            symfony-version: '^6.4'
+          - php-version: '8.2'
+            symfony-version: '^7.4'
+          - php-version: '8.3'
+            symfony-version: '^7.4'
+          - php-version: '8.4'
+            symfony-version: '^8.0'
 
     steps:
       - name: Checkout
@@ -33,15 +38,32 @@ jobs:
       - name: Cache Composer dependencies
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.composer/cache/files
-            vendor
-          key: ${{ runner.os }}-php-${{ matrix.php-version }}-composer-${{ hashFiles('composer.lock') }}
+          path: ~/.composer/cache/files
+          key: ${{ runner.os }}-php-${{ matrix.php-version }}-symfony-${{ matrix.symfony-version }}-composer-${{ hashFiles('composer.json') }}
           restore-keys: |
-            ${{ runner.os }}-php-${{ matrix.php-version }}-composer-
+            ${{ runner.os }}-php-${{ matrix.php-version }}-symfony-${{ matrix.symfony-version }}-composer-
 
-      - name: Install Composer dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
+      - name: Configure PHP platform for lane
+        run: composer config platform.php ${{ matrix.php-version }}
+
+      - name: Configure Symfony lane
+        run: |
+          composer require --no-update --dev \
+            symfony/phpunit-bridge:${{ matrix.symfony-version }}
+          composer require --no-update \
+            symfony/asset:${{ matrix.symfony-version }} \
+            symfony/console:${{ matrix.symfony-version }} \
+            symfony/form:${{ matrix.symfony-version }} \
+            symfony/framework-bundle:${{ matrix.symfony-version }} \
+            symfony/http-foundation:${{ matrix.symfony-version }} \
+            symfony/process:${{ matrix.symfony-version }} \
+            symfony/security-core:${{ matrix.symfony-version }} \
+            symfony/security-csrf:${{ matrix.symfony-version }} \
+            symfony/serializer:${{ matrix.symfony-version }} \
+            symfony/yaml:${{ matrix.symfony-version }}
+
+      - name: Update dependencies for lane
+        run: composer update --with-all-dependencies --prefer-dist --no-interaction --no-progress
 
       - name: Run test suite
         run: vendor/bin/simple-phpunit
