@@ -330,8 +330,6 @@ class Context
             return $expression;
         }
 
-        $this->expandShorthandProperties($ast);
-
         $replacements = [];
         $this->collectReplacements($ast, null, [], $replacements, $offset, $expression);
 
@@ -357,6 +355,11 @@ class Context
         string $originalExpression
     ): void {
         $scopeStack = $this->updateScopeStack($node, $scopeStack);
+
+        if ($node instanceof Property && $node->getShorthand() && !$node->getComputed()) {
+            $this->collectShorthandPropertyReplacement($node, $parent, $scopeStack, $replacements, $offset, $originalExpression);
+            return;
+        }
 
         if ($node instanceof Identifier && $this->shouldReplaceIdentifier($node, $parent, $scopeStack)) {
             $replacement = $this->getVarScope($node->getName());
@@ -580,35 +583,46 @@ class Context
         return substr_replace($string, $replacement, $start, $length);
     }
 
-    private function expandShorthandProperties(SyntaxNode $node): void
-    {
-        if ($node instanceof Property && $node->getShorthand() && !$node->getComputed()) {
-            $key = $node->getKey();
-            if ($key instanceof Identifier) {
-                $newKey = new Identifier();
-                $newKey->setName($key->getName());
-                $node->setKey($newKey);
-                $node->setShorthand(false);
-                $node->setValue($key);
-            }
+    /**
+     * @param array<int, array{start: int, end: int, replacement: string}> $replacements
+     * @param array<int, array<int, string>> $scopeStack
+     */
+    private function collectShorthandPropertyReplacement(
+        Property $node,
+        ?SyntaxNode $parent,
+        array $scopeStack,
+        array &$replacements,
+        int $offset,
+        string $originalExpression
+    ): void {
+        $key = $node->getKey();
+        $value = $node->getValue();
+        if (!$key instanceof Identifier || !$value instanceof Identifier) {
+            return;
         }
 
-        foreach (Utils::getNodeProperties($node, true) as $prop) {
-            $child = $node->{$prop['getter']}();
-            if ($child === null) {
-                continue;
-            }
-
-            if (is_array($child)) {
-                foreach ($child as $childNode) {
-                    if ($childNode instanceof SyntaxNode) {
-                        $this->expandShorthandProperties($childNode);
-                    }
-                }
-            } elseif ($child instanceof SyntaxNode) {
-                $this->expandShorthandProperties($child);
-            }
+        if ($this->isIdentifierInLocalScope($value->getName(), $scopeStack)) {
+            return;
         }
+
+        $replacementValue = $this->getVarScope($value->getName());
+        if ($replacementValue === $value->getName()) {
+            return;
+        }
+
+        $location = $node->getLocation();
+        $start = $location->getStart()->getIndex() - $offset;
+        $end = $location->getEnd()->getIndex() - $offset;
+
+        if ($start < 0 || $end < $start || $end > strlen($originalExpression)) {
+            return;
+        }
+
+        $replacements[] = [
+            'start' => $start,
+            'end' => $end,
+            'replacement' => sprintf('%s: %s', $key->getName(), $replacementValue),
+        ];
     }
 
     private function legacyParseExpression(string $expression): string
