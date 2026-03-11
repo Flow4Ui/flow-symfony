@@ -16,7 +16,7 @@ use Flow\Contract\{ComponentBuilderInterface,
     SecurityInterface,
     Transport};
 use Flow\Enum\Direction;
-use Flow\Event\{AfterActionInvokeEvent, BeforeActionInvokeEvent, PostActionEvent, PreActionEvent};
+use Flow\Event\{AfterActionInvokeEvent, AfterFlowOptionsCompileEvent, BeforeActionInvokeEvent, BeforeFlowOptionsCompileEvent, PostActionEvent, PreActionEvent};
 use Flow\Exception\FlowException;
 use Flow\Template\Compiler;
 use Psr\Cache\CacheItemPoolInterface;
@@ -569,6 +569,12 @@ class Manager implements ServiceSubscriberInterface
 
     public function compileJsFlowOptions($options = []): string
     {
+        if ($this->eventDispatcher !== null) {
+            $beforeEvent = new BeforeFlowOptionsCompileEvent($this, $options);
+            $this->eventDispatcher->dispatch($beforeEvent, BeforeFlowOptionsCompileEvent::NAME);
+            $options = $beforeEvent->getOptions();
+        }
+
         $definitions = [];
 
         $placeholders = [];
@@ -647,6 +653,11 @@ class Manager implements ServiceSubscriberInterface
             $flowOptions['endpoint'] = $options['endpoint'];
         }
 
+        if ($this->eventDispatcher !== null) {
+            $afterEvent = new AfterFlowOptionsCompileEvent($this, $options, $flowOptions);
+            $this->eventDispatcher->dispatch($afterEvent, AfterFlowOptionsCompileEvent::NAME);
+            $flowOptions = $afterEvent->getFlowOptions();
+        }
 
         $jsObject = json_encode(
             $flowOptions
