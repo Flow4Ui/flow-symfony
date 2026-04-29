@@ -245,7 +245,17 @@ class Batch {
 
     appendInvokeAction(ctx, state, action, args) {
         let callId = this.callId = this.actions.length;
-        let promise = this.appendPromise(response => response.actions[callId].return);
+        let promise = this.appendPromise(response => {
+            const actionResponse = response.actions?.[callId];
+            if (!actionResponse || !Object.prototype.hasOwnProperty.call(actionResponse, 'return')) {
+                throw this.createResponseError(
+                    response,
+                    `Flow action response is missing result for call ${callId}.`
+                );
+            }
+
+            return actionResponse.return;
+        });
 
         this.actions.push({
             isStore: ctx.isStore,
@@ -326,6 +336,42 @@ class Batch {
             promise.reject(error);
         }
         this.promises = [];
+    }
+
+    createResponseError(returnContext, fallbackMessage = 'Flow request failed.') {
+        const responseError = returnContext?.error || {};
+        const message = responseError.message || fallbackMessage;
+        const error = new Error(message);
+        error.name = String(responseError.type || responseError.code || 'FlowRequestError');
+        error.flowError = responseError;
+        error.flowResponse = returnContext;
+        return error;
+    }
+
+    createTransportError(response, message, body = null) {
+        const error = new Error(message);
+        error.name = 'FlowTransportError';
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.responseBody = body;
+        return error;
+    }
+
+    async parseResponse(response) {
+        const contentType = response.headers.get('content-type') || '';
+
+        if (!contentType.toLowerCase().includes('application/json')) {
+            const body = await response.text().catch(() => null);
+            const message = `Flow endpoint returned ${response.status} ${response.statusText || ''} with ${contentType || 'unknown content type'}.`;
+            throw this.createTransportError(response, message, body);
+        }
+
+        try {
+            return await response.json();
+        } catch (error) {
+            const message = `Flow endpoint returned invalid JSON for status ${response.status}.`;
+            throw this.createTransportError(response, message);
+        }
     }
 
     async handleUnauthorized(flow, returnContext, status) {
@@ -419,19 +465,31 @@ class Batch {
             };
         }
 
-        const response = await fetch(this.endpoint, {
-            method: 'POST',
-            headers: {"Content-type": "application/json;charset=UTF-8"},
-            //body: JSON.stringify(requestContext, (k, v) => v === null ? '@@@null@@@' : v).replace(JSON.stringify('@@@null@@@'), 'null'),
-            body: JSON.stringify(requestContext, (k, v) => v === undefined ? null : v),
-        });
+        let response;
+        let returnContext;
+        try {
+            response = await fetch(this.endpoint, {
+                method: 'POST',
+                headers: {"Content-type": "application/json;charset=UTF-8"},
+                //body: JSON.stringify(requestContext, (k, v) => v === null ? '@@@null@@@' : v).replace(JSON.stringify('@@@null@@@'), 'null'),
+                body: JSON.stringify(requestContext, (k, v) => v === undefined ? null : v),
+            });
+            returnContext = await this.parseResponse(response);
+        } catch (error) {
+            this.rejectAll(error);
+            return false;
+        }
 
         const status = response.status;
-        let returnContext = await response.json();
 
-        if (status === 401 || status === 403 || returnContext?.error?.type?.includes('AccessDeniedException')) {
+        if (status === 401 || status === 403 || String(returnContext?.error?.type || '').includes('AccessDeniedException')) {
             await this.handleUnauthorized(flow, returnContext, status);
-            this.rejectAll(returnContext.error || new Error(returnContext?.error?.message || 'Access denied'));
+            this.rejectAll(this.createResponseError(returnContext, 'Access denied'));
+            return false;
+        }
+
+        if (!response.ok || returnContext?.error) {
+            this.rejectAll(this.createResponseError(returnContext, `Flow endpoint returned HTTP ${status}.`));
             return false;
         }
 
@@ -465,13 +523,38 @@ class Batch {
         }
 
         for (let i = 0; i < this.promises.length; i++) {
-            this.promises[i].resolve(this.promises[i].handler(returnContext));
+            try {
+                this.promises[i].resolve(this.promises[i].handler(returnContext));
+            } catch (error) {
+                this.promises[i].reject(error);
+            }
         }
 
         return true;
     }
 
+    invokeSetter(context, path, value) {
+        const ctxParts = path.split('.');
+        const fieldName = ctxParts.pop();
+        for (const part of ctxParts) {
+            context = context[part];
+            if (context === undefined || context === null) {
+                console.error(`Object path ${path} is not valid.`);
+                return;
+            }
+        }
+        if (typeof context[fieldName] !== 'undefined') {
+            context[fieldName] = value;
+        } else {
+            console.error(`Field ${path} is not defined.`);
+        }
+    }
+
     invokeCallback(callback, context) {
+        if (callback.fn === '$set') {
+            this.invokeSetter(context, callback.args[0], callback.args[1]);
+            return;
+        }
         const fnParts = callback.fn.split('.');
         const fnName = fnParts.pop();
         for (const part of fnParts) {
