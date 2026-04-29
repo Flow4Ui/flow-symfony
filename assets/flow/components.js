@@ -533,7 +533,28 @@ class Batch {
         return true;
     }
 
+    invokeSetter(context, path, value) {
+        const ctxParts = path.split('.');
+        const fieldName = ctxParts.pop();
+        for (const part of ctxParts) {
+            context = context[part];
+            if (context === undefined || context === null) {
+                console.error(`Object path ${path} is not valid.`);
+                return;
+            }
+        }
+        if (typeof context[fieldName] !== 'undefined') {
+            context[fieldName] = value;
+        } else {
+            console.error(`Field ${path} is not defined.`);
+        }
+    }
+
     invokeCallback(callback, context) {
+        if (callback.fn === '$set') {
+            this.invokeSetter(context, callback.args[0], callback.args[1]);
+            return;
+        }
         const fnParts = callback.fn.split('.');
         const fnName = fnParts.pop();
         for (const part of fnParts) {
