@@ -13,6 +13,7 @@ class Router
         public bool|array   $props = true,
         public array|null   $meta = null,
         public array        $children = [],
+        public string|null  $parent = null,
     )
     {
     }

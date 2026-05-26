@@ -26,6 +26,10 @@ class Registry
      * @var array<RouteDefinition>
      */
     protected array $routes = [];
+    /**
+     * @var array<RouteDefinition>|null
+     */
+    protected ?array $resolvedRoutes = null;
 
     protected bool $stateCacheEnabled = false;
     protected ?string $stateCacheDirectory = null;
@@ -283,7 +287,7 @@ class Registry
         $attributes = $class->getAttributes(Router::class, \ReflectionAttribute::IS_INSTANCEOF);
         if (!empty($attributes)) {
             foreach ($attributes as $attribute) {
-                $this->defineComponentRouter($attribute->newInstance(), $componentAttribute);
+                $this->defineComponentRouter($attribute->newInstance(), $componentAttribute, $class->name);
             }
         }
 
@@ -302,9 +306,10 @@ class Registry
         $this->components[$class->name] = $this->componentsByName[$componentAttribute->name] = $componentAttribute;
     }
 
-    private function defineComponentRouter(Router $routerAttribute, Component $componentAttribute): void
+    private function defineComponentRouter(Router $routerAttribute, Component $componentAttribute, string $className): void
     {
-        $this->routes[] = RouteDefinition::fromRouter($routerAttribute, $componentAttribute->name);
+        $this->routes[] = RouteDefinition::fromRouter($routerAttribute, $componentAttribute->name, $className);
+        $this->resolvedRoutes = null;
     }
 
     /**
@@ -339,7 +344,87 @@ class Registry
      */
     public function getRoutes(): array
     {
-        return $this->routes;
+        return $this->resolvedRoutes ??= $this->resolveRouteParents();
+    }
+
+    /**
+     * @return RouteDefinition[]
+     */
+    private function resolveRouteParents(): array
+    {
+        $routes = array_map(
+            fn(RouteDefinition $route): RouteDefinition => $this->copyRouteDefinition($route),
+            $this->routes,
+        );
+        $routesByName = [];
+        $routesByClass = [];
+
+        foreach ($routes as $route) {
+            if ($route->name !== null) {
+                $routesByName[$route->name] = $route;
+            }
+
+            if ($route->sourceClass !== null) {
+                $routesByClass[$route->sourceClass][] = $route;
+            }
+        }
+
+        $topLevelRoutes = [];
+        foreach ($routes as $route) {
+            if ($route->parent === null) {
+                $topLevelRoutes[] = $route;
+                continue;
+            }
+
+            $parentRoute = $this->resolveParentRoute($route->parent, $routesByName, $routesByClass);
+            $parentRoute->children[] = $route;
+        }
+
+        return $topLevelRoutes;
+    }
+
+    private function copyRouteDefinition(RouteDefinition $route): RouteDefinition
+    {
+        return new RouteDefinition(
+            path: $route->path,
+            name: $route->name,
+            component: $route->component,
+            props: $route->props,
+            meta: $route->meta,
+            children: array_map(
+                fn(RouteDefinition $child): RouteDefinition => $this->copyRouteDefinition($child),
+                $route->children,
+            ),
+            parent: $route->parent,
+            sourceClass: $route->sourceClass,
+        );
+    }
+
+    /**
+     * @param array<string,RouteDefinition> $routesByName
+     * @param array<string,RouteDefinition[]> $routesByClass
+     */
+    private function resolveParentRoute(string $parent, array $routesByName, array $routesByClass): RouteDefinition
+    {
+        if (class_exists($parent)) {
+            $classRoutes = $routesByClass[$parent] ?? [];
+
+            if ($classRoutes === []) {
+                throw new \InvalidArgumentException(sprintf("Router parent class '%s' does not define any routes.", $parent));
+            }
+
+            if (count($classRoutes) > 1) {
+                throw new \InvalidArgumentException(sprintf("Router parent class '%s' defines multiple routes; use a route name as parent instead.", $parent));
+            }
+
+            return $classRoutes[0];
+        }
+
+        if (isset($routesByName[$parent])) {
+            return $routesByName[$parent];
+        }
+
+        throw new \InvalidArgumentException(sprintf("Router parent route '%s' was not found.", $parent));
     }
 
     public function isRouterEnabled(): bool

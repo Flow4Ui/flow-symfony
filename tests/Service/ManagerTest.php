@@ -2,6 +2,8 @@
 
 namespace App\Tests\Service;
 
+use Flow\Attributes\Component;
+use Flow\Attributes\Router;
 use Flow\Event\AfterFlowOptionsCompileEvent;
 use Flow\Event\BeforeFlowOptionsCompileEvent;
 use Flow\Routing\RouteDefinition;
@@ -140,4 +142,63 @@ class ManagerTest extends TestCase
             ],
         ], $decoded['router']['routes']);
     }
+
+    public function testCompileJsFlowOptionsSerializesParentLinkedRoutesAsChildren(): void
+    {
+        $registry = new Registry(routerEnabled: true, routerMode: 'history', routerBase: '/app');
+        $registry->defineComponent(new \ReflectionClass(ManagerCatalogPage::class));
+        $registry->defineComponent(new \ReflectionClass(ManagerProductIndexPage::class));
+
+        $manager = new Manager(
+            [],
+            [],
+            $this->createMock(NormalizerInterface::class),
+            $this->createMock(DenormalizerInterface::class),
+            $registry,
+            $this->createMock(Environment::class),
+            $this->createMock(Transport::class),
+        );
+
+        $compiled = $manager->compileJsFlowOptions([
+            'components' => [],
+            'stores' => [],
+            'states' => [],
+        ]);
+
+        $decoded = json_decode($compiled, true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertSame([
+            [
+                'path' => '/catalog',
+                'name' => 'manager.catalog',
+                'component' => 'ManagerCatalogPage',
+                'props' => true,
+                'children' => [
+                    [
+                        'path' => 'product-crud',
+                        'name' => 'manager.catalog.product.index',
+                        'component' => 'ManagerProductIndexPage',
+                        'props' => ['mode' => 'index'],
+                    ],
+                ],
+            ],
+        ], $decoded['router']['routes']);
+    }
+}
+
+#[Component(name: 'ManagerCatalogPage')]
+#[Router(path: '/catalog', name: 'manager.catalog')]
+final class ManagerCatalogPage
+{
+}
+
+#[Component(name: 'ManagerProductIndexPage')]
+#[Router(
+    parent: ManagerCatalogPage::class,
+    path: 'product-crud',
+    name: 'manager.catalog.product.index',
+    props: ['mode' => 'index'],
+)]
+final class ManagerProductIndexPage
+{
 }
