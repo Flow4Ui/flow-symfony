@@ -258,6 +258,42 @@ class ProductLayoutPage extends AbstractComponent
 }
 ```
 
+Routes can also be attached to a parent without nesting the attribute inline. Use `parent` with a route name string when the parent route is identified by `name`, or with a component class when that component declares exactly one route:
+
+```php
+use Flow\Attributes\Router;
+
+#[Router(
+    path: '/catalog',
+    name: 'admin.catalog',
+)]
+class CatalogPage extends AbstractComponent
+{
+}
+
+#[Router(
+    parent: CatalogPage::class,
+    path: 'product-crud',
+    name: 'admin.catalog.product.index',
+    props: ['mode' => 'index'],
+)]
+class ProductIndexPage extends AbstractComponent
+{
+}
+
+#[Router(
+    parent: 'admin.catalog',
+    path: 'product-crud/create',
+    name: 'admin.catalog.product.create',
+    meta: ['mode' => 'create'],
+)]
+class ProductCreatePage extends AbstractComponent
+{
+}
+```
+
+String parents are route names, not component names. Class parents are rejected when the class has no route or more than one route; use a route name when a component exposes multiple routes.
+
 ### Security
 
 Flow ships with a role-based security adapter. Configure an action-to-role map in `flow.security.action_role_map`, or attach roles directly on an action attribute. The `RoleBasedSecurity` service checks the active user's roles before allowing a method to execute.【F:src/Security/RoleBasedSecurity.php†L9-L70】【F:src/DependencyInjection/FlowExtension.php†L65-L74】

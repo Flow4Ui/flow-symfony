@@ -16,11 +16,13 @@ final class RouteDefinition implements \JsonSerializable
         public bool|array  $props = true,
         public array|null  $meta = null,
         public array       $children = [],
+        public string|null $parent = null,
+        public string|null $sourceClass = null,
     )
     {
     }
 
-    public static function fromRouter(Router $router, ?string $defaultComponent = null): self
+    public static function fromRouter(Router $router, ?string $defaultComponent = null, ?string $sourceClass = null): self
     {
         $component = $router->component ?? $defaultComponent;
         $children = [];
@@ -30,7 +32,7 @@ final class RouteDefinition implements \JsonSerializable
                 throw new \InvalidArgumentException('Router children must be instances of Flow\Attributes\Router.');
             }
 
-            $children[] = self::fromRouter($child, $component);
+            $children[] = self::fromRouter($child, $component, $sourceClass);
         }
 
         return new self(
@@ -40,6 +42,8 @@ final class RouteDefinition implements \JsonSerializable
             props: $router->props,
             meta: $router->meta,
             children: $children,
+            parent: $router->parent,
+            sourceClass: $sourceClass,
         );
     }
 
