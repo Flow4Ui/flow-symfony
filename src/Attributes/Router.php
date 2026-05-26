@@ -6,11 +6,13 @@ namespace Flow\Attributes;
 class Router
 {
     public function __construct(
-        public string      $path,
-        public string|null $name = null,
-        public string|null $component = null,
-        public array|null  $components = null,
-        public bool        $props = true,
+        public string       $path,
+        public string|null  $name = null,
+        public string|null  $component = null,
+        public array|null   $components = null,
+        public bool|array   $props = true,
+        public array|null   $meta = null,
+        public array        $children = [],
     )
     {
     }

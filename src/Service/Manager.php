@@ -2,7 +2,7 @@
 
 namespace Flow\Service;
 
-use Flow\Attributes\{Component, Property, Router, State, Store, StoreRef};
+use Flow\Attributes\{Component, Property, State, Store, StoreRef};
 use Flow\Component\Context;
 use Flow\Contract\{ComponentBuilderInterface,
     HasCallbacks,
@@ -18,6 +18,7 @@ use Flow\Contract\{ComponentBuilderInterface,
 use Flow\Enum\Direction;
 use Flow\Event\{AfterActionInvokeEvent, AfterFlowOptionsCompileEvent, BeforeActionInvokeEvent, BeforeFlowOptionsCompileEvent, PostActionEvent, PreActionEvent};
 use Flow\Exception\FlowException;
+use Flow\Routing\RouteDefinition;
 use Flow\Template\Compiler;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Container\ContainerExceptionInterface;
@@ -1111,7 +1112,7 @@ PHP;
         }
     }
 
-    protected function isRouteAllowed(Router $router, ?Component $component = null): bool
+    protected function isRouteAllowed(RouteDefinition $router, ?Component $component = null): bool
     {
         if ($component === null) {
             return true;

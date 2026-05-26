@@ -7,7 +7,40 @@ const defaultFlowRouterOptions = {
     base: null,
 };
 
-window.FlowRouterOptions = window.FlowRouterOptions || defaultFlowRouterOptions;
+try {
+    window.FlowRouterOptions = window.FlowRouterOptions || defaultFlowRouterOptions;
+} catch (error) {
+    // Some browser automation contexts expose a non-extensible window object.
+}
+
+function normalizeRoute(route, app) {
+    const routeName = route.name;
+    const routeComponent = app.component(route.component);
+
+    if (!routeComponent) {
+        console.error(`Component not found for route '${routeName}'`);
+        return null;
+    }
+
+    const normalizedRoute = {
+        path: route.path,
+        component: routeComponent,
+        name: routeName,
+        props: route.props,
+    };
+
+    if (route.meta !== undefined) {
+        normalizedRoute.meta = route.meta;
+    }
+
+    if (Array.isArray(route.children) && route.children.length > 0) {
+        normalizedRoute.children = route.children
+            .map((child) => normalizeRoute(child, app))
+            .filter((child) => child !== null);
+    }
+
+    return normalizedRoute;
+}
 
 export function createFlowRouter(flowRouterOptions = {}) {
     flowRouterOptions = {
@@ -31,20 +64,11 @@ export function createFlowRouter(flowRouterOptions = {}) {
                 routerOptions.history = createMemoryHistory(flowRouterOptions.base);
             }
 
-            // Iterate through routes and create route configurations
             for (const route of flowRouterOptions.routes) {
-                const routeName = route.name;
-                const routeComponent = app.component(route.component);
+                const normalizedRoute = normalizeRoute(route, app);
 
-                if (!routeComponent) {
-                    console.error(`Component not found for route '${routeName}'`);
-                } else {
-                    routerOptions.routes.push({
-                        path: route.path,
-                        component: routeComponent,
-                        name: routeName,
-                        props: route.props,
-                    });
+                if (normalizedRoute !== null) {
+                    routerOptions.routes.push(normalizedRoute);
                 }
             }
 

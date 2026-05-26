@@ -213,7 +213,50 @@ Flow compiles Vue-flavoured templates into render functions. The `Compiler` pars
 
 ### Routing
 
-Annotate classes with `#[Router]` to describe client-side routes. Registry stores each route definition, and router metadata is bundled into the serialized Flow options that hydrate the Vue router in the browser. Enable the router globally with `flow.router.enabled` and configure the mode or base path as needed.【F:src/Attributes/Router.php†L6-L16】【F:src/Service/Registry.php†L20-L33】【F:src/Service/Manager.php†L362-L404】
+Annotate classes with `#[Router]` to describe client-side routes. Registry stores each route definition, and router metadata is bundled into the serialized Flow options that hydrate the Vue router in the browser. Enable the router globally with `flow.router.enabled` and configure the mode or base path as needed.【F:src/Attributes/Router.php†L6-L17】【F:src/Service/Registry.php†L20-L33】【F:src/Service/Manager.php†L362-L404】
+
+Route `props` keep the existing Vue Router boolean behaviour by defaulting to `true`, and can also be an associative PHP array when a route should pass fixed values to the component. Use `meta` for Vue Router metadata such as mode flags, breadcrumb labels, or access hints:
+
+```php
+use Flow\Attributes\Router;
+
+#[Router(
+    path: '/product-crud',
+    name: 'admin.catalog.product.index',
+    props: ['mode' => 'index'],
+    meta: ['mode' => 'index'],
+)]
+class ProductIndexPage extends AbstractComponent
+{
+}
+```
+
+Nested Vue Router routes are declared with `children` and `new Router(...)` instances. Child routes inherit the parent component unless they set `component` explicitly. Relative child paths are appended to the parent path, while absolute child paths keep their own path:
+
+```php
+use Flow\Attributes\Router;
+
+#[Router(
+    path: '/product-crud',
+    name: 'admin.catalog.product',
+    children: [
+        new Router(
+            path: '',
+            name: 'admin.catalog.product.index',
+            props: ['mode' => 'index'],
+        ),
+        new Router(
+            path: 'create',
+            name: 'admin.catalog.product.create',
+            component: 'ProductCreatePage',
+            meta: ['mode' => 'create'],
+        ),
+    ],
+)]
+class ProductLayoutPage extends AbstractComponent
+{
+}
+```
 
 ### Security
 

@@ -95,7 +95,7 @@ property binding, and event handling.
 ## Documentation
 
 For more detailed information on how to use Flow-Symfony, please refer to the
-[Flow Component Library documentation](docs/flow-component-library.md).
+[Flow Component Library documentation](docs/flow-component-library.md), including routing with route props, meta, and child routes.
 
 ## TODO
 
