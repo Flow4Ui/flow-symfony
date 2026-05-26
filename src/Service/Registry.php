@@ -7,6 +7,7 @@ namespace Flow\Service;
 use Flow\Attributes\{Action, Attribute, Component, Property, Router, State, Store, StoreRef};
 use Flow\Enum\{Direction, StateUpdateType};
 use Flow\Exception\FlowException;
+use Flow\Routing\RouteDefinition;
 use ReflectionException;
 use function Symfony\Component\String\s;
 
@@ -22,7 +23,7 @@ class Registry
      */
     protected array $components = [];
     /**
-     * @var array<Router>
+     * @var array<RouteDefinition>
      */
     protected array $routes = [];
 
@@ -303,8 +304,7 @@ class Registry
 
     private function defineComponentRouter(Router $routerAttribute, Component $componentAttribute): void
     {
-        $this->routes[] = $routerAttribute;
-        $routerAttribute->component = $componentAttribute->name;
+        $this->routes[] = RouteDefinition::fromRouter($routerAttribute, $componentAttribute->name);
     }
 
     /**
@@ -335,7 +335,7 @@ class Registry
     }
 
     /**
-     * @return Router[]
+     * @return RouteDefinition[]
      */
     public function getRoutes(): array
     {

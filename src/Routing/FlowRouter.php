@@ -2,7 +2,6 @@
 
 namespace Flow\Routing;
 
-use Flow\Attributes\Router as FlowRoute;
 use Flow\Service\Registry;
 use Symfony\Component\HttpKernel\CacheWarmer\WarmableInterface;
 use Symfony\Component\Routing\Exception\MissingMandatoryParametersException;
@@ -60,18 +59,61 @@ class FlowRouter implements RouterInterface, WarmableInterface
         }
     }
 
-    private function findFlowRoute(string $name): ?FlowRoute
+    private function findFlowRoute(string $name): ?RouteDefinition
     {
         foreach ($this->registry->getRoutes() as $route) {
-            if ($route->name === $name) {
-                return $route;
+            $match = $this->findFlowRouteInTree($route, $name);
+            if ($match !== null) {
+                return $match;
             }
         }
 
         return null;
     }
 
-    private function generateFlowRoute(FlowRoute $route, array $parameters, int $referenceType): string
+    private function findFlowRouteInTree(
+        RouteDefinition $route,
+        string          $name,
+        ?string         $parentPath = null,
+    ): ?RouteDefinition
+    {
+        $path = $this->resolveRoutePath($route->path, $parentPath);
+
+        if ($route->name === $name) {
+            return new RouteDefinition(
+                path: $path,
+                name: $route->name,
+                component: $route->component,
+                props: $route->props,
+                meta: $route->meta,
+                children: $route->children,
+            );
+        }
+
+        foreach ($route->children as $child) {
+            $match = $this->findFlowRouteInTree($child, $name, $path);
+            if ($match !== null) {
+                return $match;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveRoutePath(string $path, ?string $parentPath = null): string
+    {
+        if ($parentPath === null || $parentPath === '' || str_starts_with($path, '/')) {
+            return $path;
+        }
+
+        if ($path === '') {
+            return $parentPath;
+        }
+
+        return rtrim($parentPath, '/') . '/' . ltrim($path, '/');
+    }
+
+    private function generateFlowRoute(RouteDefinition $route, array $parameters, int $referenceType): string
     {
         $usedParameters = [];
         $missingParameters = [];

@@ -4,6 +4,7 @@ namespace App\Tests\Service;
 
 use Flow\Event\AfterFlowOptionsCompileEvent;
 use Flow\Event\BeforeFlowOptionsCompileEvent;
+use Flow\Routing\RouteDefinition;
 use Flow\Service\Manager;
 use Flow\Service\Registry;
 use PHPUnit\Framework\TestCase;
@@ -82,5 +83,61 @@ class ManagerTest extends TestCase
         $this->assertTrue($decoded['customized']);
         $this->assertCount(2, $decoded['router']['routes']);
         $this->assertSame('forgot_password', $decoded['router']['routes'][1]['name']);
+    }
+
+    public function testCompileJsFlowOptionsSerializesRouteDefinitions(): void
+    {
+        $registry = $this->createMock(Registry::class);
+        $registry->method('isRouterEnabled')->willReturn(true);
+        $registry->method('getRoutes')->willReturn([
+            new RouteDefinition(
+                path: '/product-crud',
+                name: 'admin.catalog.product',
+                component: 'ProductCrud',
+                props: ['mode' => 'index'],
+                meta: ['section' => 'catalog'],
+                children: [
+                    new RouteDefinition(path: 'create', name: 'admin.catalog.product.create', component: 'ProductCreatePage'),
+                ],
+            ),
+        ]);
+        $registry->method('getRouterMode')->willReturn('history');
+        $registry->method('getRouterBase')->willReturn('/app');
+
+        $manager = new Manager(
+            [],
+            [],
+            $this->createMock(NormalizerInterface::class),
+            $this->createMock(DenormalizerInterface::class),
+            $registry,
+            $this->createMock(Environment::class),
+            $this->createMock(Transport::class),
+        );
+
+        $compiled = $manager->compileJsFlowOptions([
+            'components' => [],
+            'stores' => [],
+            'states' => [],
+        ]);
+
+        $decoded = json_decode($compiled, true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertSame([
+            [
+                'path' => '/product-crud',
+                'name' => 'admin.catalog.product',
+                'component' => 'ProductCrud',
+                'props' => ['mode' => 'index'],
+                'meta' => ['section' => 'catalog'],
+                'children' => [
+                    [
+                        'path' => 'create',
+                        'name' => 'admin.catalog.product.create',
+                        'component' => 'ProductCreatePage',
+                        'props' => true,
+                    ],
+                ],
+            ],
+        ], $decoded['router']['routes']);
     }
 }

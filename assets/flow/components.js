@@ -166,7 +166,7 @@ function mergeComponentProps(baseProps, scriptProps) {
     return scriptProps;
 }
 
-window.FlowOptions = window.FlowOptions || {
+const defaultFlowOptions = {
     definitions: {},
     autoloadComponents: "*",
     mount: '#flow-container',
@@ -181,6 +181,20 @@ window.FlowOptions = window.FlowOptions || {
     },
 };
 
+function getWindowFlowOptions() {
+    try {
+        return window.FlowOptions;
+    } catch (error) {
+        return undefined;
+    }
+}
+
+try {
+    window.FlowOptions = window.FlowOptions || defaultFlowOptions;
+} catch (error) {
+    // Some browser automation contexts expose a non-extensible window object.
+}
+
 export function createFlow(flowOptions = {}) {
     flowOptions = flowOptions ? {
         autoloadComponents: null,
@@ -188,7 +202,7 @@ export function createFlow(flowOptions = {}) {
         definitions: null,
         security: null,
         ...flowOptions
-    } : window.FlowOptions;
+    } : (getWindowFlowOptions() || defaultFlowOptions);
     return {
         install(app) {
             let bridge = new Bridge(app);
