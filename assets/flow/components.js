@@ -586,16 +586,25 @@ class Batch {
     }
 
     assignState(statesKey, returnContext, flow) {
+        const stateEntry = this.states[statesKey];
+        const returnedState = returnContext.states[statesKey].state;
         const assignState = flow.assignState(
-            this.states[statesKey].name,
-            this.states[statesKey].state,
-            returnContext.states[statesKey].state
+            stateEntry.name,
+            stateEntry.state,
+            returnedState
         );
 
+        if (stateEntry.ctx.instance && stateEntry.ctx.instance !== stateEntry.state) {
+            flow.assignState(stateEntry.name, stateEntry.ctx.instance, returnedState);
+
+            if (typeof stateEntry.ctx.instance.$forceUpdate === 'function') {
+                stateEntry.ctx.instance.$forceUpdate();
+            }
+        }
 
         if (returnContext.states[statesKey].callbacks) {
             for (const callback of returnContext.states[statesKey].callbacks) {
-                this.invokeCallback(callback, this.states[statesKey].ctx.instance);
+                this.invokeCallback(callback, stateEntry.ctx.instance);
             }
 
         }
