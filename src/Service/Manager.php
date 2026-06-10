@@ -49,6 +49,7 @@ class Manager implements ServiceSubscriberInterface
      * @var array<string, array{hash: string, element: string, script: string|null, styles: array}>
      */
     protected static array $compiledTemplateCache = [];
+    protected static ?string $compilerCacheVersion = null;
     /**
      * @var array<string, string>
      */
@@ -772,7 +773,7 @@ class Manager implements ServiceSubscriberInterface
             return ['render' => '', 'script' => null, 'styles' => []];
         }
 
-        $templateHash = md5($template);
+        $templateHash = $this->getTemplateCacheHash($template);
 
         // 2) If caching disabled, compile fresh each time but reuse in-memory template cache
         if (!$this->cacheEnabled) {
@@ -860,6 +861,39 @@ class Manager implements ServiceSubscriberInterface
         }
 
         return $this->hydrateCompiledTemplate($payload);
+    }
+
+    private function getTemplateCacheHash(string $template): string
+    {
+        return hash('sha256', $this->getCompilerCacheVersion() . "\0" . $template);
+    }
+
+    private function getCompilerCacheVersion(): string
+    {
+        if (self::$compilerCacheVersion !== null) {
+            return self::$compilerCacheVersion;
+        }
+
+        $files = [__FILE__];
+        foreach ([
+            dirname(__DIR__) . '/Component/*.php',
+            dirname(__DIR__) . '/Template/*.php',
+        ] as $pattern) {
+            $matches = glob($pattern);
+            if (is_array($matches)) {
+                array_push($files, ...$matches);
+            }
+        }
+
+        $files = array_values(array_unique(array_filter($files, 'is_file')));
+        sort($files);
+
+        $context = hash_init('sha256');
+        foreach ($files as $file) {
+            hash_update($context, $file . "\0" . hash_file('sha256', $file) . "\0");
+        }
+
+        return self::$compilerCacheVersion = hash_final($context);
     }
 
     /**

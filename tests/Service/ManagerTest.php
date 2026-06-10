@@ -184,6 +184,50 @@ class ManagerTest extends TestCase
             ],
         ], $decoded['router']['routes']);
     }
+
+    public function testCompiledTemplateCacheIsInvalidatedWhenCompilerVersionChanges(): void
+    {
+        $cacheDir = sys_get_temp_dir() . '/flow-manager-cache-' . bin2hex(random_bytes(6));
+        mkdir($cacheDir, 0777, true);
+
+        $component = new ManagerCacheProbe();
+        $registry = new Registry();
+        $registry->defineComponent(new \ReflectionClass($component));
+
+        $staleCacheFile = $cacheDir . '/' . ManagerCacheProbe::className() . '_' . md5(ManagerCacheProbe::class) . '.php';
+        $oldTemplateOnlyHash = md5(ManagerCacheProbe::template());
+        file_put_contents($staleCacheFile, <<<PHP
+<?php
+
+return [
+    0 => 'return h("div", null, "STALE RENDER");',
+    1 => null,
+    2 => [],
+    3 => '{$oldTemplateOnlyHash}',
+];
+PHP);
+
+        $manager = new Manager(
+            [$component],
+            [$component],
+            $this->createMock(NormalizerInterface::class),
+            $this->createMock(DenormalizerInterface::class),
+            $registry,
+            $this->createMock(Environment::class),
+            $this->createMock(Transport::class),
+            cacheEnabled: true,
+            cacheDir: $cacheDir,
+        );
+
+        $compiled = $manager->compileJsFlowOptions([
+            'components' => [ManagerCacheProbe::className() => true],
+            'stores' => [],
+            'states' => [],
+        ]);
+
+        self::assertStringNotContainsString('STALE RENDER', $compiled);
+        self::assertStringContainsString('Fresh cache title', $compiled);
+    }
 }
 
 #[Component(name: 'ManagerCatalogPage')]
@@ -201,4 +245,18 @@ final class ManagerCatalogPage
 )]
 final class ManagerProductIndexPage
 {
+}
+
+#[Component(name: 'ManagerCacheProbe', template: '<div>Fresh cache title</div>')]
+final class ManagerCacheProbe
+{
+    public static function className(): string
+    {
+        return 'ManagerCacheProbe';
+    }
+
+    public static function template(): string
+    {
+        return '<div>Fresh cache title</div>';
+    }
 }
