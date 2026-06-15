@@ -228,9 +228,60 @@ HTML;
         $rendered = $fragment->render(new Context());
 
         $this->assertStringContainsString(
-            '((this.editingId!==null?this.canEdit:this.canCreate)?(v.openBlock(),v.createElementVNode("button"',
+            '((this.editingId!==null?this.canEdit:this.canCreate)?v.createElementVNode("button"',
             str_replace(["\n", " "], '', $rendered)
         );
+    }
+
+    public function testVIfComponentBranchesUsePlainVNodes(): void
+    {
+        $template = '<MyBadge v-if="shown" :label="label"></MyBadge>';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString(
+            '((this.shown)?v.createVNode(c_0,{"label":this.label,}',
+            $rendered
+        );
+        $this->assertStringNotContainsString(
+            'v.openBlock()',
+            $rendered
+        );
+    }
+
+    public function testVIfElementBranchesUsePlainVNodeAtBranchRoot(): void
+    {
+        $template = '<div v-if="shown"><span>{{ label }}</span></div>';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString(
+            '((this.shown)?v.createElementVNode("div"',
+            $rendered
+        );
+        $this->assertStringNotContainsString(
+            'v.createElementBlock("span"',
+            $rendered
+        );
+    }
+
+    public function testControlFlowDoesNotEmitVueBlockHelpers(): void
+    {
+        $template = '<fragment><div v-if="shown">{{ label }}</div><span v-for="item in items" :key="item.id">{{ item.name }}</span></fragment>';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString('v.createVNode(v.Fragment', $rendered);
+        $this->assertStringContainsString('v.renderList(this.items,item=>', $rendered);
+        $this->assertStringNotContainsString('v.openBlock', $rendered);
+        $this->assertStringNotContainsString('v.createBlock', $rendered);
+        $this->assertStringNotContainsString('v.createElementBlock', $rendered);
     }
 
     public function testVModelUpdateHandlersUseRenderCache(): void
