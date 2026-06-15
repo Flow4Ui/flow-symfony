@@ -228,12 +228,12 @@ HTML;
         $rendered = $fragment->render(new Context());
 
         $this->assertStringContainsString(
-            '((this.editingId!==null?this.canEdit:this.canCreate)?(v.openBlock(),v.createElementBlock("button"',
+            '((this.editingId!==null?this.canEdit:this.canCreate)?v.createElementVNode("button"',
             str_replace(["\n", " "], '', $rendered)
         );
     }
 
-    public function testVIfComponentBranchesCreateBlocks(): void
+    public function testVIfComponentBranchesUsePlainVNodes(): void
     {
         $template = '<MyBadge v-if="shown" :label="label"></MyBadge>';
         $compiler = new Compiler();
@@ -242,16 +242,16 @@ HTML;
         $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
 
         $this->assertStringContainsString(
-            '((this.shown)?(v.openBlock(),v.createBlock(c_0,{"label":this.label,}',
+            '((this.shown)?v.createVNode(c_0,{"label":this.label,}',
             $rendered
         );
         $this->assertStringNotContainsString(
-            '((this.shown)?(v.openBlock(),v.createVNode(c_0,{"label":this.label,}',
+            'v.openBlock()',
             $rendered
         );
     }
 
-    public function testVIfElementBranchesCreateBlockAtBranchRoot(): void
+    public function testVIfElementBranchesUsePlainVNodeAtBranchRoot(): void
     {
         $template = '<div v-if="shown"><span>{{ label }}</span></div>';
         $compiler = new Compiler();
@@ -260,13 +260,28 @@ HTML;
         $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
 
         $this->assertStringContainsString(
-            '((this.shown)?(v.openBlock(),v.createElementBlock("div"',
+            '((this.shown)?v.createElementVNode("div"',
             $rendered
         );
         $this->assertStringNotContainsString(
-            'v.createElementVNode("div",{},[(v.openBlock(),v.createElementBlock("span"',
+            'v.createElementBlock("span"',
             $rendered
         );
+    }
+
+    public function testControlFlowDoesNotEmitVueBlockHelpers(): void
+    {
+        $template = '<fragment><div v-if="shown">{{ label }}</div><span v-for="item in items" :key="item.id">{{ item.name }}</span></fragment>';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString('v.createVNode(v.Fragment', $rendered);
+        $this->assertStringContainsString('v.renderList(this.items,item=>', $rendered);
+        $this->assertStringNotContainsString('v.openBlock', $rendered);
+        $this->assertStringNotContainsString('v.createBlock', $rendered);
+        $this->assertStringNotContainsString('v.createElementBlock', $rendered);
     }
 
     public function testVModelUpdateHandlersUseRenderCache(): void

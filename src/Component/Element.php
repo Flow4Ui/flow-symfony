@@ -27,17 +27,9 @@ class Element
         if ($isRoot) {
             $context = new Context();
         }
-        $renderAsBlock = $context->newBlock;
-        if ($renderAsBlock) {
-            $context->newBlock = false;
-        }
-
+        $context->newBlock = false;
         $props = $this->renderProps($context);
         $children = $this->renderChildren($context);
-
-        if ($renderAsBlock) {
-            $context->newBlock = true;
-        }
 
         $renderElement = $this->renderCall($props, $children, $context);
         if (!empty($this->directives)) {
@@ -58,16 +50,6 @@ class Element
 
     protected function renderCall($props, $children, Context|null $context): string
     {
-        if ($context->newBlock) {
-            $context->newBlock = false;
-            return sprintf(
-                '(v.openBlock(),v.createElementBlock("%s",%s,%s))',
-                $this->tag,
-                $props,
-                sprintf('[%s]', implode(',', $children)),
-            );
-        }
-
         return $this->renderVNode($props, $children, $context);
     }
 

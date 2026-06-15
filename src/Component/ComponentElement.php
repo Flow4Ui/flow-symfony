@@ -83,28 +83,17 @@ class ComponentElement extends Element
         } else {
             $tag = $context->resolveComponent($componentName);
         }
-        if ($context->newBlock) {
-            $renderedElement = sprintf(
-                '(v.openBlock(),v.createBlock(%s,%s,{%s},%s,%s))',
-                $tag,
-                $props,
-                implode(',', $children),
-                $this->pathFlags,
-                json_encode($this->dynamicProperties)
-            );
-            $context->newBlock = false;
-        } else {
-            $renderedElement = sprintf(
-                'v.createVNode(%s,%s,{%s},%s,%s)',
-                //  'v.createVNode(%s,%s,{%s})',
-                $tag,
-                $props,
-                implode(',', $children),
-                $this->pathFlags,
-                json_encode($this->dynamicProperties),
-            );
-            //$renderedElement = sprintf('c(%s,%s,{%s},rc)', $tag, $props, implode(',', $children));
-        }
+        $context->newBlock = false;
+        $renderedElement = sprintf(
+            'v.createVNode(%s,%s,{%s},%s,%s)',
+            //  'v.createVNode(%s,%s,{%s})',
+            $tag,
+            $props,
+            implode(',', $children),
+            $this->pathFlags,
+            json_encode($this->dynamicProperties),
+        );
+        //$renderedElement = sprintf('c(%s,%s,{%s},rc)', $tag, $props, implode(',', $children));
 
         return $renderedElement;
     }

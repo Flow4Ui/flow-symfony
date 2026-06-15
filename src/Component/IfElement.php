@@ -12,10 +12,10 @@ class IfElement extends Element
     public function render(Context|null $context = null): string
     {
         $condition = sprintf('(%s)', $this->if->render($context));
-        $do = $this->do->render(($context ?? new Context())->withForceNewBlock());
+        $do = $this->do->render($context ?? new Context());
 
         if ($this->else !== null) {
-            $else = $this->else->render(($context ?? new Context())->withForceNewBlock());
+            $else = $this->else->render($context ?? new Context());
 
             return sprintf('(%s?%s:%s)', $condition, $do, $else);
         } else {
