@@ -12,11 +12,14 @@ class IfElement extends Element
     public function render(Context|null $context = null): string
     {
         $condition = sprintf('(%s)', $this->if->render($context));
+        $do = $this->do->render(($context ?? new Context())->withForceNewBlock());
 
         if ($this->else !== null) {
-            return sprintf('(%s?(v.openBlock(),%s):(v.openBlock(),%s))', $condition, $this->do->render($context), $this->else->render($context));
+            $else = $this->else->render(($context ?? new Context())->withForceNewBlock());
+
+            return sprintf('(%s?%s:%s)', $condition, $do, $else);
         } else {
-            return sprintf('(%s?(v.openBlock(),%s):v.createCommentVNode("v-if", true))', $condition, $this->do->render($context));
+            return sprintf('(%s?%s:v.createCommentVNode("v-if", true))', $condition, $do);
         }
     }
 }

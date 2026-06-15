@@ -228,8 +228,44 @@ HTML;
         $rendered = $fragment->render(new Context());
 
         $this->assertStringContainsString(
-            '((this.editingId!==null?this.canEdit:this.canCreate)?(v.openBlock(),v.createElementVNode("button"',
+            '((this.editingId!==null?this.canEdit:this.canCreate)?(v.openBlock(),v.createElementBlock("button"',
             str_replace(["\n", " "], '', $rendered)
+        );
+    }
+
+    public function testVIfComponentBranchesCreateBlocks(): void
+    {
+        $template = '<MyBadge v-if="shown" :label="label"></MyBadge>';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString(
+            '((this.shown)?(v.openBlock(),v.createBlock(c_0,{"label":this.label,}',
+            $rendered
+        );
+        $this->assertStringNotContainsString(
+            '((this.shown)?(v.openBlock(),v.createVNode(c_0,{"label":this.label,}',
+            $rendered
+        );
+    }
+
+    public function testVIfElementBranchesCreateBlockAtBranchRoot(): void
+    {
+        $template = '<div v-if="shown"><span>{{ label }}</span></div>';
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString(
+            '((this.shown)?(v.openBlock(),v.createElementBlock("div"',
+            $rendered
+        );
+        $this->assertStringNotContainsString(
+            'v.createElementVNode("div",{},[(v.openBlock(),v.createElementBlock("span"',
+            $rendered
         );
     }
 

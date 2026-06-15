@@ -27,7 +27,19 @@ class Element
         if ($isRoot) {
             $context = new Context();
         }
-        $renderElement = $this->renderCall($this->renderProps($context), $this->renderChildren($context), $context);
+        $renderAsBlock = $context->newBlock;
+        if ($renderAsBlock) {
+            $context->newBlock = false;
+        }
+
+        $props = $this->renderProps($context);
+        $children = $this->renderChildren($context);
+
+        if ($renderAsBlock) {
+            $context->newBlock = true;
+        }
+
+        $renderElement = $this->renderCall($props, $children, $context);
         if (!empty($this->directives)) {
             $renderElement = $this->renderDirectives($renderElement, $context);
         }
@@ -46,17 +58,17 @@ class Element
 
     protected function renderCall($props, $children, Context|null $context): string
     {
-        $vNode = $this->renderVNode($props, $children, $context);
-        // component render
         if ($context->newBlock) {
             $context->newBlock = false;
-            $vNode = sprintf(
-                '(v.openBlock(),%s)',
-                $vNode
+            return sprintf(
+                '(v.openBlock(),v.createElementBlock("%s",%s,%s))',
+                $this->tag,
+                $props,
+                sprintf('[%s]', implode(',', $children)),
             );
         }
 
-        return $vNode;
+        return $this->renderVNode($props, $children, $context);
     }
 
     protected function renderVNode($props, $children, Context|null $context): string

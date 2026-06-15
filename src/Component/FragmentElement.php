@@ -8,6 +8,12 @@ class FragmentElement extends Element
     public function render(Context|null $context = null): string
     {
         $context ??= new Context();
+        $childrenCount = is_array($this->children) ? count($this->children) : 1;
+        $renderAsBlock = $context->newBlock && ($childrenCount >= 2 || !empty($this->props));
+        if ($renderAsBlock) {
+            $context->newBlock = false;
+        }
+
         $children = $this->renderChildren($context);
         $props = $this->renderProps($context);
 
