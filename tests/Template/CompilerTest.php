@@ -303,6 +303,22 @@ HTML;
         $this->assertStringContainsString('"onUpdate:modelValue":(_c[2]||(_c[2]=', $rendered);
     }
 
+    public function testVModelUpdateHandlersUsingVForScopeAreNotCached(): void
+    {
+        $template = <<<'HTML'
+<div>
+  <MyInput v-for="line in lines" :key="line.id" v-model="line.price"></MyInput>
+</div>
+HTML;
+
+        $compiler = new Compiler();
+        $fragment = $compiler->compile($template, new Context());
+        $rendered = str_replace(["\n", " "], '', $fragment->render(new Context()));
+
+        $this->assertStringContainsString('"onUpdate:modelValue":($event,...$args)=>{line.price=$event;}', $rendered);
+        $this->assertStringNotContainsString('"onUpdate:modelValue":(_c[', $rendered);
+    }
+
     public function testDomAndModelHandlersGetSequentialCacheIndexes(): void
     {
         $template = '<input v-model="msg" @change="onChange()" type="text" />';
